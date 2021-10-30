@@ -27,3 +27,8 @@ hs_err_pid*
 .project
 .pydevproject
 .settings/
+
+# Gradle
+.gradle/
+dist/
+build/
