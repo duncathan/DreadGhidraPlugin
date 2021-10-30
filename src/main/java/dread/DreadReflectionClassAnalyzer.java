@@ -1,22 +1,31 @@
 package dread;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.Set;
 
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
-import ghidra.program.model.address.AddressFactory;
+import ghidra.program.database.function.OverlappingFunctionException;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.lang.CompilerSpec;
 import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.GhidraClass;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.symbol.Namespace;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.util.UndefinedFunction;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
@@ -74,7 +83,7 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			for (Function other : called) {
 				
 				// assign parent
-				if (other.getName().equals("get") && get.getParentNamespace().getParentNamespace() != other.getParentNamespace()) {
+				if (other.getName().startsWith("get") && get.getParentNamespace().getParentNamespace() != other.getParentNamespace()) {
 					try {
 						get.getParentNamespace().setParentNamespace(other.getParentNamespace());
 					} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
@@ -90,11 +99,9 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 	
 	public boolean analyzeClass(Namespace cls, Program program, TaskMonitor monitor) {
 		SymbolTable st = program.getSymbolTable();
-		AddressFactory af = program.getAddressFactory();
-		FunctionManager fm = program.getFunctionManager();
+		ReferenceManager rm = program.getReferenceManager();
 		
 		monitor.incrementProgress(1);
-		System.out.println(cls.getName());
 		
 		for (Symbol s : st.getSymbols(cls)) {
 			Object o = s.getObject();
@@ -107,28 +114,67 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 		try {
 			get = (Function) st.getSymbols("get", cls).get(0).getObject();
 		} catch (IndexOutOfBoundsException e) {
-			return true;
+			return true; // no constructor
 		}
 		
-		Set<Function> called = get.getCalledFunctions(null);
-		called.removeAll(getRequiredCallees(fm, af).values());
+		ArrayList<Reference> allReferences = new ArrayList<Reference>();
+		for (Address a : rm.getReferenceSourceIterator(get.getBody(), true)) {
+			allReferences.addAll(Arrays.asList(rm.getReferencesFrom(a)));
+		}
 		
-		for (Function other : called) {
-			if (other.getName().equals("get")) { continue; }
+		LinkedHashMap<Function, ArrayList<Reference>> funcsWithParams = new LinkedHashMap<Function, ArrayList<Reference>>();
+		ArrayList<Reference> params = new ArrayList<Reference>();
+		for (Reference r : allReferences) {
+			if (r.getReferenceType() == RefType.PARAM) {
+				params.add(r);
+			}
+			else if ((r.getReferenceType() instanceof FlowType) && ((FlowType) r.getReferenceType()).isCall()) {
+				funcsWithParams.put(functionAt(program, r.getToAddress()), params);
+				params = new ArrayList<Reference>();
+			}
+		}
+		
+		LinkedHashMap<Function, ArrayList<Reference>> nonReqFuncs = new LinkedHashMap<Function, ArrayList<Reference>>(funcsWithParams);
+		for (Function req : getRequiredCallees(program).values()) {
+			nonReqFuncs.remove(req);
+		}
+		
+		if (nonReqFuncs.size() > 2) { return true; }
+		
+		for (Function other : nonReqFuncs.keySet()) {
+			if (other.getName().startsWith("get")) { continue; }
 			
 			try {
-				// FIXME: identify the constructor properly please lol
 				other.setParentNamespace(cls);
 				other.addTag("CONSTRUCTOR");
 				other.setName(cls.getName(), SourceType.ANALYSIS);
+				other.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
 				
-//				Parameter[] params = other.getParameters();
-//				params[0].setName("this", SourceType.ANALYSIS);
-//				other.updateFunction(CompilerSpec.CALLING_CONVENTION_thiscall,
-//						null, Arrays.asList(params),
-//						Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
-//						false, SourceType.ANALYSIS);
-			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
+				ArrayList<Reference> p = nonReqFuncs.get(other);
+				
+				if (p.size() < 2) { continue; }
+				Address fieldsAddr = p.get(1).getToAddress();
+				Function fields = functionAt(program, fieldsAddr);
+				if (fields == null) {
+					fields = new UndefinedFunction(program, fieldsAddr);
+					fields = program.getFunctionManager().createFunction("fields", cls, fieldsAddr, fields.getBody(), SourceType.ANALYSIS);
+				}
+				fields.setParentNamespace(cls);
+				fields.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
+				// TODO: analyze fields
+				
+				Reference singleton = p.get(p.size()-1);
+				Symbol singletonData = st.getSymbol(singleton);
+				singletonData.setName("_"+cls.getName(), SourceType.ANALYSIS);
+				try {
+					Symbol singletonFlags = st.getSymbols(singleton.getToAddress().subtract(8))[0];
+					singletonFlags.setName("f_"+cls.getName(), SourceType.ANALYSIS);
+				} catch (IndexOutOfBoundsException e) {
+					System.out.println(cls.getName());
+					continue;
+				}
+
+			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException | OverlappingFunctionException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 				return false;

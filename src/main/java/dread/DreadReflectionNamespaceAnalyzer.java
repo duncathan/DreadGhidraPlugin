@@ -11,7 +11,6 @@ import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.CircularDependencyException;
@@ -45,7 +44,6 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			throws CancelledException {
 		
 		FunctionManager fm = program.getFunctionManager();
-		AddressFactory af = program.getAddressFactory();
 		ReferenceManager rm = program.getReferenceManager();
 		final StringSearcher ss = new StringSearcher(program, 0, 1, true, true);
 		SymbolTable st = program.getSymbolTable();
@@ -53,7 +51,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
 		
-		HashMap<String, Function> requiredCallees = getRequiredCallees(fm, af);
+		HashMap<String, Function> requiredCallees = getRequiredCallees(program);
 		Pattern validNames = Pattern.compile("(?:\\w+(?:::)?)+");
 		
 		monitor.setProgress(0);
@@ -61,6 +59,8 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		monitor.setIndeterminate(false);
 		monitor.setMessage("Checking functions for reflection classes...");
 		for (Function f : fm.getFunctions(set, true)) {
+			if (f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
+			
 			// must be a function with no arguments
 			if (f.getParameterCount() > 0) { continue; }
 			

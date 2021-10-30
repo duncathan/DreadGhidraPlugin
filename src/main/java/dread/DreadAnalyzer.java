@@ -5,9 +5,8 @@ import java.util.HashMap;
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalyzerType;
 import ghidra.framework.options.Options;
-import ghidra.program.model.address.AddressFactory;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
@@ -53,13 +52,21 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 		}
 	}
 	
-	protected HashMap<String, Function> getRequiredCallees(FunctionManager fm, AddressFactory af) {
+	protected Function functionAt(Program program, String addr) {
+		return functionAt(program, program.getAddressFactory().getAddress(addr));
+	}
+	
+	protected Function functionAt(Program program, Address addr) {
+		return program.getFunctionManager().getFunctionAt(addr);
+	}
+	
+	protected HashMap<String, Function> getRequiredCallees(Program program) {
 		HashMap<String, Function> required = new HashMap<String, Function>();
-		required.put("__cxa_guard_acquire", fm.getFunctionAt(af.getAddress("0x71011f3000")));
-		required.put("__cxa_guard_release", fm.getFunctionAt(af.getAddress("0x71011f3010")));
-		required.put("ReadConfigValue", fm.getFunctionAt(af.getAddress("0x71000003d4")));
-		required.put("unk1", fm.getFunctionAt(af.getAddress("0x7100080124")));
-		required.put("unk2", fm.getFunctionAt(af.getAddress("0x7100000250")));
+		required.put("__cxa_guard_acquire", functionAt(program, "0x71011f3000"));
+		required.put("__cxa_guard_release", functionAt(program, "0x71011f3010"));
+		required.put("ReadConfigValue", functionAt(program, "0x71000003d4"));
+		required.put("unk1", functionAt(program, "0x7100080124"));
+		required.put("unk2", functionAt(program, "0x7100000250"));
 		return required;
 	}
 }

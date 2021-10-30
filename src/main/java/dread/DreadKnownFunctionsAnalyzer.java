@@ -15,13 +15,14 @@
  */
 package dread;
 
+import java.util.HashMap;
+import java.util.Map.Entry;
+
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
-import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.CancelledException;
@@ -39,23 +40,27 @@ public class DreadKnownFunctionsAnalyzer extends DreadAnalyzer {
 		setPriority(AnalysisPriority.FUNCTION_ID_ANALYSIS);
 	}
 	
+	protected HashMap<String, String> knownFunctions() {
+		HashMap<String, String> funcs = new HashMap<String, String>();
+		funcs.put("0x7100001570", "CRC64");
+		funcs.put("0x7100096234", "RegisterField");
+		return funcs;
+	}
+	
 	@Override
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
 			throws CancelledException {
 
-		FunctionManager fm = program.getFunctionManager();
-		AddressFactory af = program.getAddressFactory();
-		
-		try {
-			Function crc64 = fm.getFunctionAt(af.getAddress("0x7100001570"));
-			if (crc64 != null) {
-				crc64.setName("CRC64", SourceType.ANALYSIS);
+		for (Entry<String, String> entry : knownFunctions().entrySet()) {
+			Function f = functionAt(program, entry.getKey());
+			try {
+				f.setName(entry.getValue(), SourceType.ANALYSIS);
+			} catch (DuplicateNameException | InvalidInputException e) {
+				e.printStackTrace();
+				return false;
 			}
-			return true;
-		} catch (DuplicateNameException | InvalidInputException e) {
-			e.printStackTrace();
-			return false;
 		}
+		return true;
 	}
 }
 
