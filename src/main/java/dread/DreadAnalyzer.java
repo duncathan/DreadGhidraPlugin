@@ -122,6 +122,7 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 			required.put("__cxa_guard_release", functionAt(program, "0x71011f37f0"));
 		}
 		required.put("ReadConfigValue", functionAt(program, "0x71000003d4"));
+		required.put("AddEnumValue", functionAt(program, "0x71000148b8"));
 		required.put("unk1", functionAt(program, "0x7100080124"));
 		required.put("unk2", functionAt(program, "0x7100000250"));
 		return required;
