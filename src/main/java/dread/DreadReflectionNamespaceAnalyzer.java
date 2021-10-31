@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.framework.options.Options;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
@@ -38,6 +39,19 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.FUNCTION_ANALYZER);
 		setPriority(AnalysisPriority.FUNCTION_ID_ANALYSIS);
 	}
+	
+	private boolean forceReanalysis = false;
+	
+	@Override
+	public void registerOptions(Options options, Program program) {
+		options.registerOption("Force re-analysis", forceReanalysis, null,
+			"Re-analyze even if a class has already been created");
+	}
+	
+	@Override
+	public void optionsChanged(Options options, Program program) {
+		forceReanalysis = options.getBoolean("Force re-analysis", forceReanalysis);
+	}
 
 	@Override
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
@@ -54,12 +68,18 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		HashMap<String, Function> requiredCallees = getRequiredCallees(program);
 		Pattern validNames = Pattern.compile("(?:\\w+(?:::)?)+");
 		
+		int count = 0;
+		for (Function f : fm.getFunctions(set, true)) {
+			count++;
+		}
+		
 		monitor.setProgress(0);
-		monitor.setMaximum(2600);
+		monitor.setMaximum(count);
 		monitor.setIndeterminate(false);
 		monitor.setMessage("Checking functions for reflection classes...");
 		for (Function f : fm.getFunctions(set, true)) {
-			if (f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
+			monitor.incrementProgress(1);
+			if (!forceReanalysis && f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
 			
 			// must be a function with no arguments
 			if (f.getParameterCount() > 0) { continue; }
@@ -97,17 +117,18 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			
 			// create classes
 			try {
-				Namespace ns = reflection;
-				for (String s : fullName.split("::")) {
-					ns = st.getOrCreateNameSpace(ns, s, SourceType.ANALYSIS);
+				if (f.getParentNamespace() != program.getGlobalNamespace()) {
+					Namespace ns = reflection;
+					for (String s : fullName.split("::")) {
+						ns = st.getOrCreateNameSpace(ns, s, SourceType.ANALYSIS);
+					}
+					
+					GhidraClass cls = st.convertNamespaceToClass(ns);
+					
+					f.setParentNamespace(cls);
 				}
-				
-				GhidraClass cls = st.convertNamespaceToClass(ns);
-				
-				f.setParentNamespace(cls);
-				f.setName("get", SourceType.ANALYSIS);
-				
-				monitor.incrementProgress(1);
+				f.setName("init", SourceType.ANALYSIS);
+				f.addTag("REFLECTION");
 			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
 				e.printStackTrace();
 				continue;

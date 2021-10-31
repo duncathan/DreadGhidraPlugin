@@ -14,6 +14,8 @@ import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.lang.CompilerSpec;
 import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.listing.FunctionTag;
 import ghidra.program.model.listing.GhidraClass;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.FlowType;
@@ -42,15 +44,19 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			throws CancelledException {
 		
 		SymbolTable st = program.getSymbolTable();
+		FunctionManager fm = program.getFunctionManager();
 		
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
 		
 		int count = 0;
-		SymbolIterator _ref = st.getSymbols(reflection);
-		while (_ref.hasNext()) {
-			count++;
-			_ref.next();
+		for (Function f : fm.getFunctions(set, true)) {
+			for (FunctionTag t : f.getTags()) {
+				if (t.getName().equals("REFLECTION")) {
+					count++;
+					break;
+				}
+			}
 		}
 		monitor.setMaximum(count);
 		monitor.setIndeterminate(false);
@@ -76,16 +82,27 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			monitor.incrementProgress(1);
 			
 			GhidraClass cls = (GhidraClass) s.getObject();
-			Function get = (Function) st.getSymbols("get", cls).get(0).getObject();
+			Function init = null;
+			for (Symbol c : st.getSymbols(cls)) {
+				if (c.getName().startsWith("init")) {
+					init = (Function) c.getObject();
+					break;
+				}
+			}
+			if (init == null) { continue; }
 			
-			Set<Function> called = get.getCalledFunctions(null);
+			if (init.getParentNamespace().getParentNamespace() != program.getGlobalNamespace()) {
+				continue;
+			}
+			
+			Set<Function> called = init.getCalledFunctions(null);
 			
 			for (Function other : called) {
 				
 				// assign parent
-				if (other.getName().startsWith("get") && get.getParentNamespace().getParentNamespace() != other.getParentNamespace()) {
+				if (other.getName().startsWith("init") && init.getParentNamespace().getParentNamespace() != other.getParentNamespace()) {
 					try {
-						get.getParentNamespace().setParentNamespace(other.getParentNamespace());
+						init.getParentNamespace().setParentNamespace(other.getParentNamespace());
 					} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
