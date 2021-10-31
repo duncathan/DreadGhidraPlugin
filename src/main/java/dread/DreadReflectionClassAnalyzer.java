@@ -164,7 +164,7 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			try {
 				other.setParentNamespace(cls);
 				other.addTag("CONSTRUCTOR");
-				other.setName(cls.getName(), SourceType.ANALYSIS);
+				other.setName(cls.getName(), sourceType());
 				other.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
 				
 				ArrayList<Reference> p = nonReqFuncs.get(other);
@@ -182,10 +182,10 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 				
 				Reference singleton = p.get(p.size()-1);
 				Symbol singletonData = st.getSymbol(singleton);
-				singletonData.setName("_"+cls.getName(), SourceType.ANALYSIS);
+				singletonData.setName("_"+cls.getName(), sourceType());
 				try {
 					Symbol singletonFlags = st.getSymbols(singleton.getToAddress().subtract(8))[0];
-					singletonFlags.setName("f_"+cls.getName(), SourceType.ANALYSIS);
+					singletonFlags.setName("f_"+cls.getName(), sourceType());
 				} catch (IndexOutOfBoundsException e) {
 					System.out.println(cls.getName());
 					continue;

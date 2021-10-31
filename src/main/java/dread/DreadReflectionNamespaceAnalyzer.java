@@ -44,12 +44,14 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	
 	@Override
 	public void registerOptions(Options options, Program program) {
+		super.registerOptions(options, program);
 		options.registerOption("Force re-analysis", forceReanalysis, null,
 			"Re-analyze even if a class has already been created");
 	}
 	
 	@Override
 	public void optionsChanged(Options options, Program program) {
+		super.optionsChanged(options, program);
 		forceReanalysis = options.getBoolean("Force re-analysis", forceReanalysis);
 	}
 
@@ -113,21 +115,24 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			String fullName = nameBuilder.toString().trim();
 			
 			// ensure a class name could be found
-			if (fullName.length() == 0 || !validNames.matcher(fullName).matches()) { continue; }
+			if (fullName.length() == 0 || !validNames.matcher(fullName).matches()) { 
+				System.out.println(f.getEntryPoint().toString()+" : "+fullName);
+				continue; 
+			}
 			
 			// create classes
 			try {
 				if (f.getParentNamespace() != program.getGlobalNamespace()) {
 					Namespace ns = reflection;
 					for (String s : fullName.split("::")) {
-						ns = st.getOrCreateNameSpace(ns, s, SourceType.ANALYSIS);
+						ns = st.getOrCreateNameSpace(ns, s, sourceType());
 					}
 					
 					GhidraClass cls = st.convertNamespaceToClass(ns);
 					
 					f.setParentNamespace(cls);
 				}
-				f.setName("init", SourceType.ANALYSIS);
+				f.setName("init", sourceType());
 				f.addTag("REFLECTION");
 			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
 				e.printStackTrace();

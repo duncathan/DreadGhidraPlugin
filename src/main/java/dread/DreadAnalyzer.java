@@ -34,14 +34,20 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 //				};
 //		return program.getExecutableFormat() == "Nintendo Switch Binary" && Arrays.asList(md5s).contains(program.getExecutableMD5());
 	}
-
+	
+	protected boolean forceRename = false;
 	@Override
 	public void registerOptions(Options options, Program program) {
-
-		// TODO: If this analyzer has custom options, register them here
-
-		//options.registerOption("Option name goes here", false, null,
-		//	"Option description goes here");
+		options.registerOption("Force renaming", forceRename, null,
+				"Rename functions and classes, overwriting user-defined names");
+	}
+	@Override
+	public void optionsChanged(Options options, Program program) {
+		forceRename = options.getBoolean("Force renaming", forceRename);
+	}
+	
+	protected SourceType sourceType() {
+		return forceRename ? SourceType.USER_DEFINED : SourceType.ANALYSIS;
 	}
 	
 	protected Namespace reflection(Program program) {

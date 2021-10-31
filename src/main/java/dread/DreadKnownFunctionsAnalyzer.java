@@ -54,7 +54,7 @@ public class DreadKnownFunctionsAnalyzer extends DreadAnalyzer {
 		for (Entry<String, String> entry : knownFunctions().entrySet()) {
 			Function f = functionAt(program, entry.getKey());
 			try {
-				f.setName(entry.getValue(), SourceType.ANALYSIS);
+				f.setName(entry.getValue(), sourceType());
 			} catch (DuplicateNameException | InvalidInputException e) {
 				e.printStackTrace();
 				return false;
