@@ -4,8 +4,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.StringUtils;
 
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
@@ -66,7 +69,8 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		if (reflection == null) { return false; }
 		
 		HashMap<String, Function> requiredCallees = getRequiredCallees(program);
-		Pattern validNames = Pattern.compile("(?:\\w+(?:::)?)+");
+		
+		Pattern divideNamespaces = Pattern.compile("\\w+(?:<.*>)?");
 		
 		int count = 0;
 		for (@SuppressWarnings("unused") Function f : fm.getFunctions(set, true)) {
@@ -78,6 +82,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		monitor.setIndeterminate(false);
 		monitor.setMessage("Checking functions for reflection classes...");
 		for (Function f : fm.getFunctions(set, true)) {
+			if (monitor.isCancelled()) { return false; }
 			monitor.incrementProgress(1);
 			if (!forceReanalysis && f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
 			
@@ -110,25 +115,29 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 				}
 			};
 			ss.search(new AddressSet(classNameAddr, set.getMaxAddress()), callback, false, stringMonitor);
-			String fullName = nameBuilder.toString().trim();
+			String fullName = StringUtils.deleteWhitespace(nameBuilder.toString().trim());
 			
 			// ensure a class name could be found
-			if (fullName.length() == 0 || !validNames.matcher(fullName).matches()) { 
-				System.out.println(f.getEntryPoint().toString()+" : "+fullName);
+			if (fullName.length() == 0) { 
 				continue; 
 			}
 			
 			// create classes
 			try {
-				if (f.getParentNamespace() != program.getGlobalNamespace()) {
+				if (f.getParentNamespace() == program.getGlobalNamespace()) {
 					Namespace ns = reflection;
-					for (String s : fullName.split("::")) {
-						ns = st.getOrCreateNameSpace(ns, s, sourceType());
+					Matcher matcher = divideNamespaces.matcher(fullName);
+					
+					while (matcher.find()) {
+						ns = st.getOrCreateNameSpace(ns, matcher.group(), sourceType());
 					}
 					
-					GhidraClass cls = st.convertNamespaceToClass(ns);
-					
-					f.setParentNamespace(cls);
+					if (ns == reflection) {
+						f.setParentNamespace(reflection);
+					} else {
+						GhidraClass cls = st.convertNamespaceToClass(ns);
+						f.setParentNamespace(cls);
+					}
 				}
 				f.setName("init", sourceType());
 				f.addTag("REFLECTION");

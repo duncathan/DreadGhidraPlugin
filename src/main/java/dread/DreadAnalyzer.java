@@ -1,5 +1,6 @@
 package dread;
 
+import java.util.Arrays;
 import java.util.HashMap;
 
 import ghidra.app.services.AbstractAnalyzer;
@@ -27,13 +28,18 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 
 	@Override
 	public boolean canAnalyze(Program program) {
-		return true;
-//		final String[] md5s = {
-//				"f5d9aa2af3abef3070791057060ee93c", // 1.0.0
-//												// TODO: 1.0.1
-//												// TODO: Demo
-//				};
-//		return program.getExecutableFormat() == "Nintendo Switch Binary" && Arrays.asList(md5s).contains(program.getExecutableMD5());
+		final String[] md5s = {
+				"f5d9aa2af3abef3070791057060ee93c", // 1.0.0
+												// TODO: 1.0.1
+												// TODO: Demo
+				};
+		if (!program.getExecutableFormat().equals("Nintendo Switch Binary")) { return false; }
+		for (String s : md5s) {
+			if (s.equals(program.getExecutableMD5())) {
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	protected boolean forceRename = false;
