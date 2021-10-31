@@ -7,7 +7,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.options.Options;
@@ -23,7 +22,6 @@ import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
-import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.util.string.FoundString;
 import ghidra.program.util.string.FoundStringCallback;
@@ -37,7 +35,7 @@ import ghidra.util.task.TaskMonitor;
 public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	public DreadReflectionNamespaceAnalyzer() {
 		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.FUNCTION_ANALYZER);
-		setPriority(AnalysisPriority.FUNCTION_ID_ANALYSIS);
+		setPriority(priority(1));
 	}
 	
 	private boolean forceReanalysis = false;
@@ -71,7 +69,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		Pattern validNames = Pattern.compile("(?:\\w+(?:::)?)+");
 		
 		int count = 0;
-		for (Function f : fm.getFunctions(set, true)) {
+		for (@SuppressWarnings("unused") Function f : fm.getFunctions(set, true)) {
 			count++;
 		}
 		

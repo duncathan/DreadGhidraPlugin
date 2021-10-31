@@ -18,13 +18,11 @@ package dread;
 import java.util.HashMap;
 import java.util.Map.Entry;
 
-import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
-import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
@@ -37,7 +35,7 @@ public class DreadKnownFunctionsAnalyzer extends DreadAnalyzer {
 
 	public DreadKnownFunctionsAnalyzer() {
 		super("(Dread) Identify Known Functions", "Performs analysis on specific known functions such as CRC64", AnalyzerType.FUNCTION_ANALYZER);
-		setPriority(AnalysisPriority.FUNCTION_ID_ANALYSIS);
+		setPriority(priority(0));
 	}
 	
 	protected HashMap<String, String> knownFunctions() {

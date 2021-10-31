@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Set;
 
-import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.database.function.OverlappingFunctionException;
@@ -25,7 +24,6 @@ import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
-import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.util.UndefinedFunction;
 import ghidra.util.exception.CancelledException;
@@ -36,14 +34,13 @@ import ghidra.util.task.TaskMonitor;
 public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 	public DreadReflectionClassAnalyzer() {
 		super("(Dread) Analyze Reflection Classes", "Analyzes the generated reflection classes to establish a hierearchy and identify class functions", AnalyzerType.FUNCTION_ANALYZER);
-		setPriority(AnalysisPriority.DATA_TYPE_PROPOGATION);
+		setPriority(priority(2));
 	}
 	
 	@Override
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
 			throws CancelledException {
 		
-		SymbolTable st = program.getSymbolTable();
 		FunctionManager fm = program.getFunctionManager();
 		
 		Namespace reflection = reflection(program);

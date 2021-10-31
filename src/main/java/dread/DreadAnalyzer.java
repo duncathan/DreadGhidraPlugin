@@ -3,6 +3,7 @@ package dread;
 import java.util.HashMap;
 
 import ghidra.app.services.AbstractAnalyzer;
+import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.framework.options.Options;
 import ghidra.program.model.address.Address;
@@ -48,6 +49,14 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	
 	protected SourceType sourceType() {
 		return forceRename ? SourceType.USER_DEFINED : SourceType.ANALYSIS;
+	}
+	
+	protected AnalysisPriority priority(int priority) {
+		AnalysisPriority p = AnalysisPriority.FUNCTION_ID_ANALYSIS;
+		for (int i = 0; i <= priority; i++) {
+			p = p.getNext("DREAD"+i);
+		}
+		return p;
 	}
 	
 	protected Namespace reflection(Program program) {
