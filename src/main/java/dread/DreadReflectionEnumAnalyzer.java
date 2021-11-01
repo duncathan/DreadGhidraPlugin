@@ -1,11 +1,13 @@
 package dread;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Set;
 
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.framework.options.Options;
+import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.Data;
@@ -20,7 +22,9 @@ import ghidra.program.model.symbol.ReferenceIterator;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.util.string.StringSearcher;
+import ghidra.util.UndefinedFunction;
 import ghidra.util.exception.CancelledException;
+import ghidra.util.exception.InvalidInputException;
 import ghidra.util.task.TaskMonitor;
 
 public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
@@ -42,6 +46,13 @@ public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
 	public void optionsChanged(Options options, Program program) {
 		super.optionsChanged(options, program);
 		forceReanalysis = options.getBoolean("Force re-analysis", forceReanalysis);
+	}
+	
+	@Override
+	protected HashMap<String, Function> getRequiredCallees(Program program) {
+		HashMap<String, Function> required = super.getRequiredCallees(program);
+		required.put("AddEnumValue", functionAt(program, "0x71000148b8"));
+		return required;
 	}
 	
 	private ArrayList<Reference> filterReferenceIterator(ReferenceIterator iterator, RefType type) {
@@ -91,14 +102,46 @@ public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
 
+		
 		Function addEnumValue = getRequiredCallees(program).get("AddEnumValue");
 		Set<Function> calling = addEnumValue.getCallingFunctions(null);
 
 		monitor.setProgress(0);
-		monitor.setMaximum(calling.size());
+		
 		monitor.setIndeterminate(false);
 		
-		for (Function f : calling) {
+		
+		
+		Address s_Invalid = program.getAddressFactory().getAddress("0x71015a077c");
+		int count = 0;
+		for (Reference r : rm.getReferencesTo(s_Invalid)) {
+			count++;
+		}
+		System.out.println(count);
+		monitor.setMaximum(count);
+		for (Reference r : rm.getReferencesTo(s_Invalid)) {
+			Function f = fm.getFunctionContaining(r.getFromAddress());
+			
+			if (f == null) {
+				boolean stop = false;
+				for (Address a : rm.getReferenceDestinationIterator(r.getFromAddress(), false)) {
+					for (Reference r2 : rm.getReferencesTo(a)) {
+						if (r2.getReferenceType() == RefType.PARAM) {
+							f = new UndefinedFunction(program, a);
+							try {
+								f = fm.createFunction(null, f.getEntryPoint(), f.getBody(), sourceType());
+							} catch (InvalidInputException | OverlappingFunctionException e) {
+								// TODO Auto-generated catch block
+//								e.printStackTrace();
+							}
+							stop = true;
+							break;
+						}
+					}
+					if (stop) { break; }
+				}
+			}
+
 			monitor.incrementProgress(1);
 			if (!forceReanalysis && f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
 			
@@ -132,7 +175,7 @@ public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
 			}
 			// typeString is what we want! YAY
 			
-			// System.out.println(f.getEntryPoint().toString() + " is for " + typeString);
+			System.out.println(f.getEntryPoint().toString() + " is for " + typeString);
 		}
 		return true;
 	}
