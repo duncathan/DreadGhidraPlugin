@@ -43,6 +43,7 @@ public class DreadKnownFunctionsAnalyzer extends DreadAnalyzer {
 		HashMap<String, String> funcs = new HashMap<String, String>();
 		funcs.put("0x7100001570", "CRC64");
 		funcs.put("0x7100096234", "RegisterField");
+		funcs.put("0x71000003d4", "HashString");
 		return funcs;
 	}
 	
