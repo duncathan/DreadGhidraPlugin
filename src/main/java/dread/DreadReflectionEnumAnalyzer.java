@@ -48,13 +48,6 @@ public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
 		forceReanalysis = options.getBoolean("Force re-analysis", forceReanalysis);
 	}
 	
-	@Override
-	protected HashMap<String, Function> getRequiredCallees(Program program) {
-		HashMap<String, Function> required = super.getRequiredCallees(program);
-		required.put("AddEnumValue", functionAt(program, "0x71000148b8"));
-		return required;
-	}
-	
 	private ArrayList<Reference> filterReferenceIterator(ReferenceIterator iterator, RefType type) {
 		ArrayList<Reference> result = new ArrayList<Reference>();
 		for (Reference ref : iterator) {
@@ -96,51 +89,21 @@ public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
 		FunctionManager fm = program.getFunctionManager();
 		ReferenceManager rm = program.getReferenceManager();
 		Listing listing = program.getListing();
-		final StringSearcher ss = new StringSearcher(program, 0, 1, true, true);
-		SymbolTable st = program.getSymbolTable();
 		
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
 
-		
-		Function addEnumValue = getRequiredCallees(program).get("AddEnumValue");
-		Set<Function> calling = addEnumValue.getCallingFunctions(null);
-
 		monitor.setProgress(0);
-		
 		monitor.setIndeterminate(false);
-		
-		
 		
 		Address s_Invalid = program.getAddressFactory().getAddress("0x71015a077c");
 		int count = 0;
 		for (Reference r : rm.getReferencesTo(s_Invalid)) {
 			count++;
 		}
-		System.out.println(count);
 		monitor.setMaximum(count);
 		for (Reference r : rm.getReferencesTo(s_Invalid)) {
-			Function f = fm.getFunctionContaining(r.getFromAddress());
-			
-			if (f == null) {
-				boolean stop = false;
-				for (Address a : rm.getReferenceDestinationIterator(r.getFromAddress(), false)) {
-					for (Reference r2 : rm.getReferencesTo(a)) {
-						if (r2.getReferenceType() == RefType.PARAM) {
-							f = new UndefinedFunction(program, a);
-							try {
-								f = fm.createFunction(null, f.getEntryPoint(), f.getBody(), sourceType());
-							} catch (InvalidInputException | OverlappingFunctionException e) {
-								// TODO Auto-generated catch block
-//								e.printStackTrace();
-							}
-							stop = true;
-							break;
-						}
-					}
-					if (stop) { break; }
-				}
-			}
+			Function f = getOrCreateFunctionFor(program, r.getFromAddress());
 
 			monitor.incrementProgress(1);
 			if (!forceReanalysis && f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
@@ -178,5 +141,37 @@ public class DreadReflectionEnumAnalyzer extends DreadAnalyzer {
 			System.out.println(f.getEntryPoint().toString() + " is for " + typeString);
 		}
 		return true;
+	}
+
+	private Function getOrCreateFunctionFor(Program program, Address refToInvalidStr) {
+		FunctionManager fm = program.getFunctionManager();
+		ReferenceManager rm = program.getReferenceManager();
+		Function f = fm.getFunctionContaining(refToInvalidStr);
+		if (f != null) {
+			return f;
+		}
+		
+		boolean stop = false;
+		for (Address a : rm.getReferenceDestinationIterator(refToInvalidStr, false)) {
+			for (Reference r2 : rm.getReferencesTo(a)) {
+				if (r2.getReferenceType() == RefType.PARAM) {
+					try {
+						f = new UndefinedFunction(program, a);
+					} catch (IllegalArgumentException e) {
+						continue;
+					}
+					try {
+						f = fm.createFunction(null, f.getEntryPoint(), f.getBody(), sourceType());
+					} catch (InvalidInputException | OverlappingFunctionException e) {
+						// TODO Auto-generated catch block
+//						e.printStackTrace();
+					}
+					stop = true;
+					break;
+				}
+			}
+			if (stop) { break; }
+		}
+		return f;
 	}
 }
