@@ -175,10 +175,10 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 				
 				String name = cls.getName();
 				if (name.startsWith("::")) { name = name.replaceFirst("::", ""); }
-				singletonData.setName("_"+name, sourceType());
+				singletonData.setNameAndNamespace("_"+name, cls, sourceType());
 				try {
 					Symbol singletonFlags = st.getSymbols(singleton.getToAddress().subtract(8))[0];
-					singletonFlags.setName("f_"+name, sourceType());
+					singletonFlags.setNameAndNamespace("f_"+name, cls, sourceType());
 				} catch (IndexOutOfBoundsException e) {
 					System.out.println(cls.getName());
 					continue;
