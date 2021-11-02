@@ -1,18 +1,13 @@
 package dread;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
-import org.apache.commons.lang3.StringUtils;
 
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
-import ghidra.framework.options.Options;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
@@ -22,9 +17,6 @@ import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.GhidraClass;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.Namespace;
-import ghidra.program.model.symbol.RefType;
-import ghidra.program.model.symbol.Reference;
-import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.util.string.FoundString;
 import ghidra.program.util.string.FoundStringCallback;
@@ -40,28 +32,12 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.FUNCTION_ANALYZER);
 		setPriority(priority(1));
 	}
-	
-	private boolean forceReanalysis = false;
-	
-	@Override
-	public void registerOptions(Options options, Program program) {
-		super.registerOptions(options, program);
-		options.registerOption("Force re-analysis", forceReanalysis, null,
-			"Re-analyze even if a class has already been created");
-	}
-	
-	@Override
-	public void optionsChanged(Options options, Program program) {
-		super.optionsChanged(options, program);
-		forceReanalysis = options.getBoolean("Force re-analysis", forceReanalysis);
-	}
 
 	@Override
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
 			throws CancelledException {
 		
 		FunctionManager fm = program.getFunctionManager();
-		ReferenceManager rm = program.getReferenceManager();
 		final StringSearcher ss = new StringSearcher(program, 0, 1, true, true);
 		SymbolTable st = program.getSymbolTable();
 		
@@ -70,7 +46,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		
 		HashMap<String, Function> requiredCallees = getRequiredCallees(program);
 		
-		Pattern divideNamespaces = Pattern.compile("\\w+(?:<.*>)?");
+		Pattern divideNamespaces = Pattern.compile("\\w+(?:<.*>)?(?:\\s*(?:const|\\*))*");
 		
 		int count = 0;
 		for (@SuppressWarnings("unused") Function f : fm.getFunctions(set, true)) {
@@ -91,17 +67,13 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			
 			// ensure the function calls all the relevant functions used by the initializers
 			Set<Function> called = f.getCalledFunctions(null);
-			if (!called.containsAll(requiredCallees.values())) { continue; }
+			if (!called.containsAll(requiredCallees.values()) || requiredCallees.values().containsAll(called)) { continue; }
 			
-			// find all outgoing references from this function
-			ArrayList<Reference> references = new ArrayList<Reference>();
-			for (Address a : rm.getReferenceSourceIterator(f.getBody(), true))  {
-				references.addAll(Arrays.asList(rm.getReferencesFrom(a)));
-			}
+			ArrayList<FuncWithParams> rcvCalls = callsWithParams(program, f);
+			rcvCalls.removeIf(fn -> fn.function() != requiredCallees.get("ReadConfigValue"));
 			
-			// find the address of the class name string
-			ArrayList<Reference> paramReferences = new ArrayList<Reference>(references.stream().filter(r -> r.getReferenceType() == RefType.PARAM).collect(Collectors.toList()));
-			Address classNameAddr = paramReferences.get(1).getToAddress();
+			if (rcvCalls.size() == 0 || rcvCalls.get(0).params().size() == 0) { continue; }
+			Address classNameAddr = rcvCalls.get(0).params().get(0).getToAddress();
 			
 			// search for the class name referenced by the function
 			final DummyCancellableTaskMonitor stringMonitor = new DummyCancellableTaskMonitor();
@@ -115,7 +87,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 				}
 			};
 			ss.search(new AddressSet(classNameAddr, set.getMaxAddress()), callback, false, stringMonitor);
-			String fullName = StringUtils.deleteWhitespace(nameBuilder.toString().trim());
+			String fullName = nameBuilder.toString().trim();
 			
 			// ensure a class name could be found
 			if (fullName.length() == 0) { 
@@ -124,12 +96,13 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			
 			// create classes
 			try {
-				if (f.getParentNamespace() == program.getGlobalNamespace()) {
+				if (forceReanalysis || f.getParentNamespace() == program.getGlobalNamespace()) {
 					Namespace ns = reflection;
 					Matcher matcher = divideNamespaces.matcher(fullName);
 					
 					while (matcher.find()) {
-						ns = st.getOrCreateNameSpace(ns, matcher.group(), sourceType());
+						String name = matcher.group().replace("*", "Ptr").replace(" ", "_");
+						ns = st.getOrCreateNameSpace(ns, name, sourceType());
 					}
 					
 					if (ns == reflection) {

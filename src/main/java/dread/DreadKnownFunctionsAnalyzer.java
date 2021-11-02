@@ -21,6 +21,7 @@ import java.util.Map.Entry;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.util.exception.CancelledException;
@@ -53,7 +54,9 @@ public class DreadKnownFunctionsAnalyzer extends DreadAnalyzer {
 			Function f = functionAt(program, entry.getKey());
 			try {
 				f.setName(entry.getValue(), sourceType());
-			} catch (DuplicateNameException | InvalidInputException e) {
+				f.setParentNamespace(program.getGlobalNamespace());
+				f.setCallingConvention(f.getDefaultCallingConventionName());
+			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
 				e.printStackTrace();
 				return false;
 			}

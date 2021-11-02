@@ -1,5 +1,6 @@
 package dread;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
@@ -10,7 +11,11 @@ import ghidra.framework.options.Options;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.symbol.Namespace;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
@@ -43,14 +48,18 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	}
 	
 	protected boolean forceRename = false;
+	protected boolean forceReanalysis = false;
 	@Override
 	public void registerOptions(Options options, Program program) {
+		options.registerOption("Force re-analysis", forceReanalysis, null,
+				"Re-analyze even if a class has already been created");
 		options.registerOption("Force renaming", forceRename, null,
 				"Rename functions and classes, overwriting user-defined names");
 	}
 	@Override
 	public void optionsChanged(Options options, Program program) {
 		forceRename = options.getBoolean("Force renaming", forceRename);
+		forceReanalysis = options.getBoolean("Force re-analysis", forceReanalysis);
 	}
 	
 	protected SourceType sourceType() {
@@ -89,5 +98,39 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 		required.put("unk1", functionAt(program, "0x7100080124"));
 		required.put("unk2", functionAt(program, "0x7100000250"));
 		return required;
+	}
+	
+	protected interface FuncWithParams {
+		public Function function();
+		public ArrayList<Reference> params();
+	}
+	
+	protected ArrayList<FuncWithParams> callsWithParams(Program program, Function func) {
+		ReferenceManager rm = program.getReferenceManager();
+		
+		ArrayList<Reference> allReferences = new ArrayList<Reference>();
+		for (Address a : rm.getReferenceSourceIterator(func.getBody(), true)) {
+			allReferences.addAll(Arrays.asList(rm.getReferencesFrom(a)));
+		}
+		
+		ArrayList<FuncWithParams> funcsWithParams = new ArrayList<FuncWithParams>();
+		ArrayList<Reference> params = new ArrayList<Reference>();
+		for (Reference r : allReferences) {
+			if (r.getReferenceType() == RefType.PARAM) {
+				params.add(r);
+			}
+			else if ((r.getReferenceType() instanceof FlowType) && ((FlowType) r.getReferenceType()).isCall()) {
+				final ArrayList<Reference> finalParams = new ArrayList<Reference>(params);
+				funcsWithParams.add(new FuncWithParams() {
+					private Function f = functionAt(program, r.getToAddress());
+					private ArrayList<Reference> p = finalParams;
+					public Function function() { return this.f; }
+					public ArrayList<Reference> params() { return this.p; }
+				});
+				params = new ArrayList<Reference>();
+			}
+		}
+		
+		return funcsWithParams;
 	}
 }
