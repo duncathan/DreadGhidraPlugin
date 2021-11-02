@@ -50,6 +50,13 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 					public String version() { return "1.0.0"; }
 					public String compressed() { return "f5d9aa2af3abef3070791057060ee93c"; }
 					public String decompressed() { return "0bfaa4258b49b560bb5bdf4d353ec0f6"; }
+				},
+				new GameHash() {
+					// TODO: include md5s and remove compatibility override, for proper 1.0.1 support
+					public boolean programIsCompatible(Program program) { return true; }
+					public String version() { return "1.0.1"; }
+					public String compressed() { return ""; }
+					public String decompressed() { return ""; }
 				}
 			};
 		if (!program.getExecutableFormat().equals("Nintendo Switch Binary")) { return false; }
@@ -107,8 +114,13 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	
 	protected HashMap<String, Function> getRequiredCallees(Program program) {
 		HashMap<String, Function> required = new HashMap<String, Function>();
-		required.put("__cxa_guard_acquire", functionAt(program, "0x71011f3000"));
-		required.put("__cxa_guard_release", functionAt(program, "0x71011f3010"));
+		if (version.equals("1.0.0")) {
+			required.put("__cxa_guard_acquire", functionAt(program, "0x71011f3000"));
+			required.put("__cxa_guard_release", functionAt(program, "0x71011f3010"));
+		} else if (version.equals("1.0.1")) {
+			required.put("__cxa_guard_acquire", functionAt(program, "0x71011f37e0"));
+			required.put("__cxa_guard_release", functionAt(program, "0x71011f37f0"));
+		}
 		required.put("ReadConfigValue", functionAt(program, "0x71000003d4"));
 		required.put("unk1", functionAt(program, "0x7100080124"));
 		required.put("unk2", functionAt(program, "0x7100000250"));
