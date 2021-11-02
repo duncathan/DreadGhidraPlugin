@@ -30,17 +30,32 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	public boolean getDefaultEnablement(Program program) {
 		return true;
 	}
-
+	
+	interface GameHash {
+		public default boolean programIsCompatible(Program program) {
+			return program.getExecutableMD5().equals(compressed()) || program.getExecutableMD5().equals(decompressed());
+		}
+		public String version();
+		public String compressed();
+		public String decompressed();
+	}
+	
+	protected String version;
+	
 	@Override
 	public boolean canAnalyze(Program program) {
-		final String[] md5s = {
-				"f5d9aa2af3abef3070791057060ee93c", // 1.0.0
-												// TODO: 1.0.1
-												// TODO: Demo
-				};
+		
+		final GameHash[] md5s = {
+				new GameHash() {
+					public String version() { return "1.0.0"; }
+					public String compressed() { return "f5d9aa2af3abef3070791057060ee93c"; }
+					public String decompressed() { return "0bfaa4258b49b560bb5bdf4d353ec0f6"; }
+				}
+			};
 		if (!program.getExecutableFormat().equals("Nintendo Switch Binary")) { return false; }
-		for (String s : md5s) {
-			if (s.equals(program.getExecutableMD5())) {
+		for (GameHash g : md5s) {
+			if (g.programIsCompatible(program)) {
+				version = g.version();
 				return true;
 			}
 		}
