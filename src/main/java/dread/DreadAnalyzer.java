@@ -52,11 +52,9 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 					public String decompressed() { return "0bfaa4258b49b560bb5bdf4d353ec0f6"; }
 				},
 				new GameHash() {
-					// TODO: include md5s and remove compatibility override, for proper 1.0.1 support
-					public boolean programIsCompatible(Program program) { return true; }
 					public String version() { return "1.0.1"; }
-					public String compressed() { return ""; }
-					public String decompressed() { return ""; }
+					public String compressed() { return "e1afe736d92edb98d50d442a5dfcb825"; }
+					public String decompressed() { return "7ef4a3353444ef83b84d8e94611f538d"; }
 				}
 			};
 		if (!program.getExecutableFormat().equals("Nintendo Switch Binary")) { return false; }
