@@ -14,8 +14,6 @@ import ghidra.app.decompiler.DecompilerLocation;
 import ghidra.app.plugin.core.decompile.actions.FillOutStructureCmd;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
-import ghidra.program.database.function.OverlappingFunctionException;
-import ghidra.program.database.symbol.GlobalVariableSymbolDB;
 import ghidra.program.flatapi.FlatProgramAPI;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
@@ -45,7 +43,6 @@ import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.util.CodeUnitInsertionException;
-import ghidra.util.UndefinedFunction;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
@@ -261,20 +258,12 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 				
 				if (params.size() < 2) { continue; }
 				Address fieldsAddr = params.get(1).getToAddress();
-				Function fields = functionAt(program, fieldsAddr);
-				if (fields == null) {
-					fields = new UndefinedFunction(program, fieldsAddr);
-					fields = program.getFunctionManager().createFunction("fields", cls, fieldsAddr, fields.getBody(), SourceType.ANALYSIS);
-				}
+				Function fields = findOrCreateFuncAt(program, fieldsAddr, "fields", cls);
 				fields.setParentNamespace(cls);
 				fields.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
 				// TODO: analyze fields
 				
-				
-				
-				
-
-			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException | OverlappingFunctionException e) {
+			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 				return false;

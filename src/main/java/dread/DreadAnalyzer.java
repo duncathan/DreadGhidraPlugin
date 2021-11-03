@@ -8,6 +8,7 @@ import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.framework.options.Options;
+import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
@@ -17,6 +18,7 @@ import ghidra.program.model.symbol.RefType;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.util.UndefinedFunction;
 import ghidra.util.exception.DuplicateNameException;
 import ghidra.util.exception.InvalidInputException;
 
@@ -108,6 +110,31 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	
 	protected Function functionAt(Program program, Address addr) {
 		return program.getFunctionManager().getFunctionAt(addr);
+	}
+	
+	protected Function findOrCreateFuncAt(Program program, Address addr) {
+		return findOrCreateFuncAt(program, addr, null, null);
+	}
+	
+	protected Function findOrCreateFuncAt(Program program, Address addr, String name) {
+		return findOrCreateFuncAt(program, addr, name, null);
+	}
+	
+	protected Function findOrCreateFuncAt(Program program, Address addr, Namespace ns) {
+		return findOrCreateFuncAt(program, addr, null, ns);
+	}
+	
+	protected Function findOrCreateFuncAt(Program program, Address addr, String name, Namespace ns) {
+		Function f = functionAt(program, addr);
+		if (f == null) {
+			f = new UndefinedFunction(program, addr);
+			try {
+				f = program.getFunctionManager().createFunction(name, ns, f.getEntryPoint(), f.getBody(), sourceType());
+			} catch (InvalidInputException | OverlappingFunctionException e) {
+				e.printStackTrace();
+			}
+		}
+		return f;
 	}
 	
 	protected HashMap<String, Function> getRequiredCallees(Program program) {

@@ -11,13 +11,20 @@ import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.data.DataTypeConflictException;
+import ghidra.program.model.data.PointerDataType;
 import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.GhidraClass;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.Namespace;
+import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.program.util.string.FoundString;
 import ghidra.program.util.string.FoundStringCallback;
 import ghidra.program.util.string.StringSearcher;
@@ -52,6 +59,11 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		for (@SuppressWarnings("unused") Function f : fm.getFunctions(set, true)) {
 			count++;
 		}
+		
+		monitor.setProgress(0);
+		monitor.setIndeterminate(false);
+		monitor.setMessage("Creating functions in .init_array...");
+		if (!parseInitArray(program, set, monitor, log)) { return false; }
 		
 		monitor.setProgress(0);
 		monitor.setMaximum(count);
@@ -120,5 +132,32 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			}
 		}
 		return true;
+	}
+	
+	public boolean parseInitArray(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) {
+		ReferenceManager rm = program.getReferenceManager();
+		Listing listing = program.getListing();
+		for (MemoryBlock block : program.getMemory().getBlocks()) {
+			if (!block.getName().equals(".init_array")) { continue; }
+			monitor.setMaximum(block.getSize()/8);
+			for (int i = 0; i < block.getSize(); i += 8) {
+				if (monitor.isCancelled()) { return false; }
+				monitor.incrementProgress(1);
+				Address a = block.getStart().add(i);
+				Reference[] r = rm.getReferencesFrom(a);
+				if (r.length == 0) {
+					try {
+						listing.createData(a, new PointerDataType());
+					} catch (CodeUnitInsertionException | DataTypeConflictException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					r = rm.getReferencesFrom(a);
+				}
+				findOrCreateFuncAt(program, r[0].getToAddress());
+			}
+			return true;
+		}
+		return false;
 	}
 }
