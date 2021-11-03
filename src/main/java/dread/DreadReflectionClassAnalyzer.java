@@ -15,17 +15,27 @@ import ghidra.app.plugin.core.decompile.actions.FillOutStructureCmd;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.database.function.OverlappingFunctionException;
+import ghidra.program.database.symbol.GlobalVariableSymbolDB;
+import ghidra.program.flatapi.FlatProgramAPI;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.data.BuiltInDataTypeManager;
+import ghidra.program.model.data.CategoryPath;
+import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.DataTypeConflictException;
+import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.Pointer64DataType;
 import ghidra.program.model.data.Structure;
+import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.VoidDataType;
 import ghidra.program.model.lang.CompilerSpec;
 import ghidra.program.model.listing.CircularDependencyException;
+import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.FunctionTag;
 import ghidra.program.model.listing.GhidraClass;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.VariableUtilities;
 import ghidra.program.model.pcode.HighSymbol;
@@ -34,6 +44,7 @@ import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.UndefinedFunction;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.exception.DuplicateNameException;
@@ -51,6 +62,15 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			throws CancelledException {
 		
 		FunctionManager fm = program.getFunctionManager();
+		
+		DataTypeManager dtm = program.getDataTypeManager();
+		if (dtm.getDataType(CategoryPath.ROOT, "__guard") == null) {
+			StructureDataType guard = new StructureDataType("__guard", 8, dtm);
+			DataTypeManager builtIn = BuiltInDataTypeManager.getDataTypeManager();
+			guard.replace(0, builtIn.getDataType(CategoryPath.ROOT, "byte"), 1, "initialized", "");
+			guard.replace(1,  builtIn.getDataType(CategoryPath.ROOT, "byte"), 1, "in_use", "");
+			dtm.addDataType(guard, null);
+		}
 		
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
@@ -71,9 +91,13 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 		monitor.setMessage("Creating type hierarchy...");
 		if (!createHierarchy(reflection, program, monitor)) { return false; }
 		
+		haveGuard = 0;
+		noGuard = 0;
 		monitor.setProgress(0);
 		monitor.setMessage("Analyzing classes...");
 		if (!analyzeClass(reflection, program, monitor)) { return false; }
+		
+		System.out.println("Have guards: "+haveGuard+" No guard: "+noGuard);
 		
 		return true;
 	}
@@ -128,9 +152,13 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 		return true;
 	}
 	
+	private int haveGuard = 0;
+	private int noGuard = 0;
+	
 	public boolean analyzeClass(Namespace cls, Program program, TaskMonitor monitor) {
 		if (monitor.isCancelled()) { return false; }
 		SymbolTable st = program.getSymbolTable();
+		Listing listing = program.getListing();
 		
 		for (Symbol s : st.getSymbols(cls)) {
 			Object o = s.getObject();
@@ -150,15 +178,8 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 		
 		ArrayList<FuncWithParams> nonReqFuncs = callsWithParams(program, init);
 		
-		for (Function req : getRequiredCallees(program).values()) {
-			ArrayList<FuncWithParams> remove = new ArrayList<FuncWithParams>();
-			for (FuncWithParams call : nonReqFuncs) {
-				if (req == call.function()) {
-					remove.add(call);
-				}
-			}
-			nonReqFuncs.removeAll(remove);
-		}
+		nonReqFuncs.removeIf(c -> getRequiredCallees(program).values().contains(c.function()));
+		nonReqFuncs.removeIf(c -> c.function() == null);
 		
 		if (nonReqFuncs.size() > 2) {
 			// Found a false positive; get rid of it
@@ -168,9 +189,19 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 		
 		for (FuncWithParams call: nonReqFuncs) {
 			Function other = call.function();
+			if (other == null) {
+				System.out.println(cls.getName());
+				continue;
+			}
 			if (other.getSymbol() != null && other.getSymbol().getSource() != SourceType.DEFAULT && !other.getName().equals(cls.getName())) { continue; }
 			
 			try {
+				ArrayList<Reference> params = call.params();
+				if (params.size() == 0) {
+					resetFunction(program, other);
+					continue; 
+				}
+				
 				other.setParentNamespace(cls);
 				other.addTag("CONSTRUCTOR");
 				other.setName(cls.getName(), sourceType());
@@ -178,19 +209,53 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 				
 				updateThisDataType(program, other);
 				
-				ArrayList<Reference> params = call.params();
-				if (params.size() == 0) { continue; }
-				
 				Reference singleton = params.get(params.size()-1);
-				Symbol singletonData = st.getSymbol(singleton);
+
+				DataType clsStruct = VariableUtilities.findExistingClassStruct(init);
+				Data clsData = listing.getDataAt(singleton.getToAddress());
+				if (clsData != null && clsData.getDataType() != clsStruct) {
+					try {
+						new FlatProgramAPI(program).removeData(clsData);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				if (clsData == null || clsData.getDataType() != clsStruct) {
+					try {
+						listing.createData(singleton.getToAddress(), clsStruct);
+					} catch (CodeUnitInsertionException | DataTypeConflictException e1) {
+						System.out.println("Overlapping object data: "+cls+" "+singleton.getToAddress());
+					}
+				}
+				
 				
 				String name = cls.getName();
 				if (name.startsWith("::")) { name = name.replaceFirst("::", ""); }
-				singletonData.setNameAndNamespace("_"+name, cls, sourceType());
+				st.getSymbol(singleton).setNameAndNamespace("_"+name, cls, sourceType());
 				try {
-					Symbol singletonFlags = st.getSymbols(singleton.getToAddress().subtract(8))[0];
-					singletonFlags.setNameAndNamespace("f_"+name, cls, sourceType());
+					Reference singletonFlags = callsWithParams(program, init).get(0).params().get(0);
+					if (st.getSymbol(singletonFlags).getName().equals("__guard")) { continue; }
+					
+					DataType guard = program.getDataTypeManager().getDataType(CategoryPath.ROOT, "__guard");
+					Data sfData = listing.getDataAt(singletonFlags.getToAddress());
+					if (sfData != null && sfData.getDataType() != guard) {
+						try {
+							new FlatProgramAPI(program).removeData(sfData);
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+					if (sfData == null || sfData.getDataType() != guard) {
+						try {
+							listing.createData(singletonFlags.getToAddress(), guard);
+						} catch (CodeUnitInsertionException | DataTypeConflictException e) {
+							System.out.println("Overlapping __guard data: "+cls+" "+singletonFlags.getToAddress());
+						}
+					}
+					st.getSymbol(singletonFlags).setNameAndNamespace("__guard", cls, sourceType());
+					haveGuard++;
 				} catch (IndexOutOfBoundsException e) {
+					noGuard++;
 //					System.out.println("No flag found: "+cls.getName());
 				}
 				

@@ -160,4 +160,8 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 		
 		return funcsWithParams;
 	}
+	
+	protected void resetFunction(Program program, Function func) {
+		program.getSymbolTable().removeSymbolSpecial(func.getSymbol());
+	}
 }
