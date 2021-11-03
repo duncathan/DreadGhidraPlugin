@@ -6,6 +6,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.python.google.common.collect.Lists;
+
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.Address;
@@ -45,8 +47,8 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			throws CancelledException {
 		
 		FunctionManager fm = program.getFunctionManager();
-		final StringSearcher ss = new StringSearcher(program, 0, 1, true, true);
 		SymbolTable st = program.getSymbolTable();
+		Listing listing = program.getListing();
 		
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
@@ -74,64 +76,130 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			monitor.incrementProgress(1);
 			if (!forceReanalysis && f.getParentNamespace() != program.getGlobalNamespace()) { continue; }
 			
-			// must be a function with no arguments
-			if (f.getParameterCount() > 0) { continue; }
-			
-			// ensure the function calls all the relevant functions used by the initializers
-			Set<Function> called = f.getCalledFunctions(null);
-			if (!called.containsAll(requiredCallees.values()) || requiredCallees.values().containsAll(called)) { continue; }
-			
-			ArrayList<FuncWithParams> rcvCalls = callsWithParams(program, f);
-			rcvCalls.removeIf(fn -> fn.function() != requiredCallees.get("ReadConfigValue"));
-			
-			if (rcvCalls.size() == 0 || rcvCalls.get(0).params().size() == 0) { continue; }
-			Address classNameAddr = rcvCalls.get(0).params().get(0).getToAddress();
-			
-			// search for the class name referenced by the function
-			final DummyCancellableTaskMonitor stringMonitor = new DummyCancellableTaskMonitor();
-			final StringBuilder nameBuilder = new StringBuilder();
-			FoundStringCallback callback = new FoundStringCallback() {
-				public void stringFound(FoundString foundString) {
-					String s = foundString.getString(program.getMemory());
-					nameBuilder.setLength(s.length());
-					nameBuilder.insert(0, s);
-					stringMonitor.cancel();
-				}
-			};
-			ss.search(new AddressSet(classNameAddr, set.getMaxAddress()), callback, false, stringMonitor);
-			String fullName = nameBuilder.toString().trim();
-			
-			// ensure a class name could be found
-			if (fullName.length() == 0) { 
-				continue; 
-			}
-			
-			// create classes
-			try {
-				if (forceReanalysis || f.getParentNamespace() == program.getGlobalNamespace()) {
-					Namespace ns = reflection;
-					Matcher matcher = divideNamespaces.matcher(fullName);
-					
-					while (matcher.find()) {
-						String name = matcher.group().replace("*", "Ptr").replace(" ", "_");
-						ns = st.getOrCreateNameSpace(ns, name, sourceType());
-					}
-					
-					if (ns == reflection) {
-						f.setParentNamespace(reflection);
-					} else {
-						GhidraClass cls = st.convertNamespaceToClass(ns);
-						f.setParentNamespace(cls);
-					}
-				}
-				f.setName("init", sourceType());
-				f.addTag("REFLECTION");
-			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
-				e.printStackTrace();
-				continue;
-			}
+			if (identifyStandardInit(program, f, divideNamespaces, set)) { continue; }
+			if (identifyOtherInit(program, f, divideNamespaces, set)) { continue; }
 		}
 		return true;
+	}
+	
+	public boolean createInit(Program program, Function f, Pattern p, String fullName, String initName, String extraTag) {
+		// create classes
+		try {
+			if (forceReanalysis || f.getParentNamespace() == program.getGlobalNamespace()) {
+				Namespace reflection = reflection(program);
+				Namespace ns = reflection;
+				Matcher matcher = p.matcher(fullName);
+				
+				while (matcher.find()) {
+					String name = matcher.group().replace("*", "Ptr").replace(" ", "_");
+					ns = program.getSymbolTable().getOrCreateNameSpace(ns, name, sourceType());
+				}
+				
+				if (ns == reflection) {
+					f.setParentNamespace(reflection);
+				} else {
+					GhidraClass cls = program.getSymbolTable().convertNamespaceToClass(ns);
+					f.setParentNamespace(cls);
+				}
+			}
+			f.setName(initName, sourceType());
+			f.addTag("REFLECTION");
+			if (extraTag != null) {
+				f.addTag(extraTag);
+			}
+		} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
+			e.printStackTrace();
+			return false;
+		}
+		return true;
+	}
+	
+	public String findName(Program program, Address addr, AddressSetView set) {
+		// search for the class name referenced by the function
+		final DummyCancellableTaskMonitor stringMonitor = new DummyCancellableTaskMonitor();
+		final StringBuilder nameBuilder = new StringBuilder();
+		FoundStringCallback callback = new FoundStringCallback() {
+			public void stringFound(FoundString foundString) {
+				String s = foundString.getString(program.getMemory());
+				nameBuilder.setLength(s.length());
+				nameBuilder.insert(0, s);
+				stringMonitor.cancel();
+			}
+		};
+		final StringSearcher ss = new StringSearcher(program, 0, 1, true, true);
+		ss.search(new AddressSet(addr, set.getMaxAddress()), callback, false, stringMonitor);
+		return nameBuilder.toString().trim();
+	}
+	
+	public boolean identifyStandardInit(Program program, Function f, Pattern p, AddressSetView set) {
+		// must be a function with no arguments
+		if (f.getParameterCount() > 0) { return false; }
+		
+		// ensure the function calls all the relevant functions used by the initializers
+		Set<Function> called = f.getCalledFunctions(null);
+		HashMap<String, Function> requiredCallees = getRequiredCallees(program);
+		if (!called.containsAll(requiredCallees.values()) || requiredCallees.values().containsAll(called)) { return false; }
+		
+		ArrayList<FuncWithParams> rcvCalls = callsWithParams(program, f);
+		rcvCalls.removeIf(fn -> fn.function() != requiredCallees.get("ReadConfigValue"));
+		
+		if (rcvCalls.size() == 0 || rcvCalls.get(0).params().size() == 0) { return false; }
+		
+		Address classNameAddr = rcvCalls.get(0).params().get(0).getToAddress();
+		
+		String fullName = findName(program, classNameAddr, set);
+		
+		// ensure a class name could be found
+		if (fullName.length() == 0) { 
+			return false; 
+		}
+		
+		return createInit(program, f, p, fullName, "init", null);
+	}
+	
+	public boolean identifyOtherInit(Program program, Function f, Pattern p, AddressSetView set) {
+		HashMap<String, Function> knownFuncs = getRequiredCallees(program);
+		ArrayList<FuncWithParams> allCalls = callsWithParams(program, f);
+		if (
+			allCalls.size() < 4 ||
+			allCalls.get(0).function() != knownFuncs.get("ReadConfigValue") ||
+			allCalls.get(1).function() != knownFuncs.get("UNK_250") ||
+			allCalls.get(2).function() != knownFuncs.get("ReadConfigValue") ||
+			allCalls.get(3).function() != knownFuncs.get("UNK_250")
+		) { return false; }
+		ArrayList<FuncWithParams> rcvCalls = new ArrayList<FuncWithParams>(allCalls);
+		rcvCalls.removeIf(c -> c.function() != knownFuncs.get("ReadConfigValue"));
+		if (rcvCalls.size() <= 2) { return false; }
+		FuncWithParams lastRcv = null;
+		for (FuncWithParams rcv : Lists.reverse(rcvCalls)) {
+			if (allCalls.size() == allCalls.indexOf(lastRcv) ||
+				knownFuncs.get("UNK_250") == allCalls.get(allCalls.indexOf(lastRcv)+1).function()) {
+				continue;
+			}
+			
+			if (rcv.params().size() == 0) { continue; }
+			Address classNameAddr = rcv.params().get(0).getToAddress();
+			String name = findName(program, classNameAddr, set);
+			if (name.contains("::")) {
+				lastRcv = rcv;
+				break;
+			}
+		}
+		
+		if (lastRcv == null) { return false; }
+		
+		Address classNameAddr = lastRcv.params().get(0).getToAddress();
+		String fullName = findName(program, classNameAddr, set);
+		
+		if (fullName.length() == 0 || fullName.equals("sources") || fullName.equals("binaries")) { return false; }
+		
+		if (fullName.contains("<")) {
+			return createInit(program, f, p, fullName, "initTemplate", "TEMPLATE_INIT");
+		} else if (fullName.contains("::E") || fullName.contains("::S")) {
+			return createInit(program, f, p, fullName, "initEnums", "ENUM_INIT");
+		}
+		
+		return createInit(program, f, p, fullName, "initOther", "OTHER_INIT");
 	}
 	
 	public boolean parseInitArray(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) {
