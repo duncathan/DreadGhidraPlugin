@@ -1,7 +1,5 @@
 package dread;
 
-import java.util.Collection;
-import java.util.List;
 import java.util.Set;
 
 import ghidra.app.services.AnalyzerType;
@@ -79,7 +77,6 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 	private boolean createHierarchy(Namespace reflection, Program program, TaskMonitor monitor) {
 		if (monitor.isCancelled()) { return false; }
 		SymbolTable st = program.getSymbolTable();
-		FunctionManager fm = program.getFunctionManager();
 		
 		for (Symbol s : st.getSymbols(reflection)) {
 			if (monitor.isCancelled()) { return false; }
