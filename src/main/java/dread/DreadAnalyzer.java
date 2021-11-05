@@ -4,14 +4,21 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.framework.options.Options;
 import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.FunctionManager;
+import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.listing.InstructionIterator;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.FlowType;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.RefType;
@@ -127,14 +134,46 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	protected Function findOrCreateFuncAt(Program program, Address addr, String name, Namespace ns) {
 		Function f = functionAt(program, addr);
 		if (f == null) {
-			f = new UndefinedFunction(program, addr);
-			try {
-				f = program.getFunctionManager().createFunction(name, ns, f.getEntryPoint(), f.getBody(), sourceType());
-			} catch (InvalidInputException | OverlappingFunctionException e) {
-				e.printStackTrace();
+			new CreateFunctionCmd(null, addr, null, sourceType(), false, false).applyTo(program);
+		}
+		return functionAt(program, addr);
+	}
+	
+	protected Function findOrCreateFuncContaining(Program program, Address addr) {
+		return findOrCreateFuncContaining(program, addr, null, null);
+	}
+	
+	protected Function findOrCreateFuncContaining(Program program, Address addr, String name) {
+		return findOrCreateFuncContaining(program, addr, name, null);
+	}
+	
+	protected Function findOrCreateFuncContaining(Program program, Address addr, Namespace ns) {
+		return findOrCreateFuncContaining(program, addr, null, ns);
+	}
+	
+	protected Function findOrCreateFuncContaining(Program program, Address addr, String name, Namespace ns) {
+		ReferenceManager rm = program.getReferenceManager();
+		FunctionManager fm = program.getFunctionManager();
+		
+		Function f = fm.getFunctionContaining(addr);
+		if (f != null) { return f; }
+		
+		MemoryBlock initArray = null;
+		for (MemoryBlock block : program.getMemory().getBlocks()) {
+			if (block.getName().equals(".init_array")) {
+				initArray = block;
+				break;
 			}
 		}
-		return f;
+		
+		for (Address a : rm.getReferenceDestinationIterator(addr, false)) {
+			for (Reference r2 : rm.getReferencesTo(a)) {
+				if (initArray.contains(r2.getFromAddress()) || r2.getReferenceType().isCall()) {
+					return findOrCreateFuncAt(program, a, name, ns);
+				}
+			}
+		}
+		return null;
 	}
 	
 	protected HashMap<String, Function> getRequiredCallees(Program program) {
