@@ -72,7 +72,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
 		
-		HashMap<String, Function> requiredCallees = getRequiredCallees(program);
+		HashMap<String, Function> knownFuncs = knownFunctions(program);
 		
 		Pattern divideNamespaces = Pattern.compile("\\w+(?:<.*>)?(?:\\s*(?:const|\\*))*");
 		
@@ -109,21 +109,21 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 				
 				Set<Function> called = f.getCalledFunctions(null);
 				
-				if (!called.contains(functionAt(program, "0x7100001570"))) { continue; }
+				if (!called.contains(knownFuncs.get("CRC64"))) { continue; }
 				// calls CRC64; definitely a constructor
 				
 				boolean inline = false;
-				FuncWithParams rcv = null;
-				if (called.contains(requiredCallees.get("__cxa_guard_acquire"))) {
+				FuncWithParams hashStr = null;
+				if (called.contains(knownFuncs.get("__cxa_guard_acquire"))) {
 					//inline constructor
 					inline = true;
 					
 					f.addTag("REFLECTION");
 					
-					ArrayList<FuncWithParams> rcvCalls = callsWithParams(program, f);
-					rcvCalls.removeIf(fn -> fn.function() != requiredCallees.get("ReadConfigValue"));
-					if (rcvCalls.size() > 0) {
-						rcv = rcvCalls.get(0);
+					ArrayList<FuncWithParams> hashStrCalls = callsWithParams(program, f);
+					hashStrCalls.removeIf(fn -> fn.function() != knownFuncs.get("HashString"));
+					if (hashStrCalls.size() > 0) {
+						hashStr = hashStrCalls.get(0);
 					}
 				} else {
 					// standard constructor
@@ -140,16 +140,16 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 						}
 					}
 						
-					rcv = allCalls.get(allCalls.indexOf(thiscall)-1);
-					ArrayList<Function> rcvOrCrc = new ArrayList<Function>();
-					rcvOrCrc.add(requiredCallees.get("ReadConfigValue"));
-					rcvOrCrc.add(functionAt(program, "0x7100001570"));
-					for (int i = allCalls.indexOf(rcv)-1; i >= 0 && !rcvOrCrc.contains(rcv.function()); i--) {
-						rcv = allCalls.get(i);
+					hashStr = allCalls.get(allCalls.indexOf(thiscall)-1);
+					ArrayList<Function> hashStrOrCrc = new ArrayList<Function>();
+					hashStrOrCrc.add(knownFuncs.get("HashString"));
+					hashStrOrCrc.add(knownFuncs.get("CRC64"));
+					for (int i = allCalls.indexOf(hashStr)-1; i >= 0 && !hashStrOrCrc.contains(hashStr.function()); i--) {
+						hashStr = allCalls.get(i);
 					}
 				}
 						
-				Address classNameAddr = rcv.params().get(0).getToAddress();
+				Address classNameAddr = hashStr.params().get(0).getToAddress();
 
 				String fullName = findName(program, classNameAddr);
 				
@@ -223,7 +223,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 						switch (baseTypeName) {
 							case "CClass":
 								ArrayList<FuncWithParams> guardCalls = callsWithParams(program, init);
-								guardCalls.removeIf(fn -> fn.function() != requiredCallees.get("__cxa_guard_acquire"));
+								guardCalls.removeIf(fn -> fn.function() != knownFuncs.get("__cxa_guard_acquire"));
 								if (guardCalls.size() > 0) {
 									Reference singletonGuards = guardCalls.get(0).params().get(0);
 									if (singletonGuards == null || st.getSymbol(singletonGuards).getName().equals("__guard")) { break; }

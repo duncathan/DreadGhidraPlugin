@@ -15,7 +15,6 @@
  */
 package dread;
 
-import java.util.HashMap;
 import java.util.Map.Entry;
 
 import ghidra.app.services.AnalyzerType;
@@ -39,21 +38,16 @@ public class DreadKnownFunctionsAnalyzer extends DreadAnalyzer {
 		setPriority(priority(0));
 	}
 	
-	protected HashMap<String, String> knownFunctions() {
-		HashMap<String, String> funcs = new HashMap<String, String>();
-		funcs.put("0x7100001570", "CRC64");
-		funcs.put("0x7100096234", "RegisterField");
-		return funcs;
-	}
-	
 	@Override
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
 			throws CancelledException {
 
-		for (Entry<String, String> entry : knownFunctions().entrySet()) {
-			Function f = functionAt(program, entry.getKey());
+		for (Entry<String, Function> entry : knownFunctions(program).entrySet()) {
+			Function f = entry.getValue();
+			String name = entry.getKey();
+			if (name.startsWith("FUN_")) { continue; }
 			try {
-				f.setName(entry.getValue(), sourceType());
+				f.setName(entry.getKey(), sourceType());
 				f.setParentNamespace(program.getGlobalNamespace());
 				f.setCallingConvention(f.getDefaultCallingConventionName());
 			} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {

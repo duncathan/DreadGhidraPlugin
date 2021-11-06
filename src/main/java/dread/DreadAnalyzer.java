@@ -170,19 +170,24 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 		return null;
 	}
 	
-	protected HashMap<String, Function> getRequiredCallees(Program program) {
-		HashMap<String, Function> required = new HashMap<String, Function>();
-		if (version.equals("1.0.0")) {
-			required.put("__cxa_guard_acquire", functionAt(program, "0x71011f3000"));
-			required.put("__cxa_guard_release", functionAt(program, "0x71011f3010"));
-		} else if (version.equals("1.0.1")) {
-			required.put("__cxa_guard_acquire", functionAt(program, "0x71011f37e0"));
-			required.put("__cxa_guard_release", functionAt(program, "0x71011f37f0"));
+	private HashMap<String, Function> knownFuncs = null;
+	protected HashMap<String, Function> knownFunctions(Program program) {
+		if (knownFuncs == null) {
+			knownFuncs = new HashMap<String, Function>();
+			if (version.equals("1.0.0")) {
+				knownFuncs.put("__cxa_guard_acquire", functionAt(program, "0x71011f3000"));
+				knownFuncs.put("__cxa_guard_release", functionAt(program, "0x71011f3010"));
+			} else if (version.equals("1.0.1")) {
+				knownFuncs.put("__cxa_guard_acquire", functionAt(program, "0x71011f37e0"));
+				knownFuncs.put("__cxa_guard_release", functionAt(program, "0x71011f37f0"));
+			}
+			knownFuncs.put("HashString", functionAt(program, "0x71000003d4"));
+			knownFuncs.put("FUN_7100080124", functionAt(program, "0x7100080124"));
+			knownFuncs.put("FUN_7100000250", functionAt(program, "0x7100000250"));
+			knownFuncs.put("CRC64", functionAt(program, "0x7100001570"));
+			knownFuncs.put("RegisterField", functionAt(program, "0x7100096234"));
 		}
-		required.put("ReadConfigValue", functionAt(program, "0x71000003d4"));
-		required.put("UNK_124", functionAt(program, "0x7100080124"));
-		required.put("UNK_250", functionAt(program, "0x7100000250"));
-		return required;
+		return knownFuncs;
 	}
 	
 	protected interface FuncWithParams {
