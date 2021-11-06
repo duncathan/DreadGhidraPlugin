@@ -60,7 +60,7 @@ import ghidra.util.task.TaskMonitor;
 
 public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	public DreadReflectionNamespaceAnalyzer() {
-		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.BYTE_ANALYZER);
+		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.INSTRUCTION_ANALYZER);
 		setPriority(priority(1));
 	}
 

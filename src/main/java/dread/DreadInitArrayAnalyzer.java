@@ -1,6 +1,7 @@
 package dread;
 
 import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.app.services.AnalysisPriority;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.flatapi.FlatProgramAPI;
@@ -23,7 +24,7 @@ public class DreadInitArrayAnalyzer extends DreadAnalyzer {
 
 	public DreadInitArrayAnalyzer() {
 		super("(Dread) Initialize functions", "Ensures that every function in .init_array is initialized as an actual function.", AnalyzerType.INSTRUCTION_ANALYZER);
-		setPriority(priority(0));
+		setPriority(AnalysisPriority.CODE_ANALYSIS);
 	}
 
 	@Override

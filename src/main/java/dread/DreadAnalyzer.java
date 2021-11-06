@@ -53,7 +53,7 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 				new GameHash() {
 					public String version() { return "1.0.0"; }
 					public String compressed() { return "f5d9aa2af3abef3070791057060ee93c"; }
-					public String decompressed() { return "0bfaa4258b49b560bb5bdf4d353ec0f6"; }
+					public String decompressed() { return "7abd813d3961a68e1538886985439a07"; }
 				},
 				new GameHash() {
 					public String version() { return "1.0.1"; }

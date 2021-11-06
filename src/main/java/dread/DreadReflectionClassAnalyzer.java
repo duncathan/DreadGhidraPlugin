@@ -21,7 +21,7 @@ import ghidra.util.task.TaskMonitor;
 
 public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 	public DreadReflectionClassAnalyzer() {
-		super("(Dread) Generate Type Hierarchy", "Analyzes the generated reflection classes to establish a hierearchy", AnalyzerType.FUNCTION_ANALYZER);
+		super("(Dread) Generate Type Hierarchy", "Analyzes the generated reflection classes to establish a hierearchy", AnalyzerType.FUNCTION_SIGNATURES_ANALYZER);
 		setPriority(priority(2));
 	}
 	
@@ -37,7 +37,7 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 		int count = 0;
 		for (Function f : fm.getFunctions(set, true)) {
 			for (FunctionTag t : f.getTags()) {
-				if (t.getName().equals("REFLECTION")) {
+				if (t.getName().equals("CONSTRUCTOR")) {
 					count++;
 					break;
 				}
