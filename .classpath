@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
 	<classpathentry kind="src" path="src/main/java"/>
-	<classpathentry kind="src" path="src/main/help"/>
-	<classpathentry kind="src" path="src/main/resources"/>
 	<classpathentry kind="src" path="ghidra_scripts"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/4"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jdk-11.0.13.8-hotspot"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jdk-11.0.13.8-hotspot">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
 	<classpathentry kind="lib" path="C:/Users/dunca/Downloads/ghidra_10.0.2_PUBLIC_20210804/ghidra_10.0.2_PUBLIC/Ghidra/Processors/68000/lib/68000.jar" sourcepath="C:/Users/dunca/Downloads/ghidra_10.0.2_PUBLIC_20210804/ghidra_10.0.2_PUBLIC/Ghidra/Processors/68000/lib/68000-src.zip">
 		<attributes>
 			<attribute name="javadoc_location" value="jar:file:/C:\Users\dunca\Downloads\ghidra_10.0.2_PUBLIC_20210804\ghidra_10.0.2_PUBLIC\docs\GhidraAPI_javadoc.zip!/api/"/>

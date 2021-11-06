@@ -14,7 +14,6 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceManager;
-import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.util.CodeUnitInsertionException;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -36,7 +35,6 @@ public class DreadInitArrayAnalyzer extends DreadAnalyzer {
 		ReferenceManager rm = program.getReferenceManager();
 		Listing listing = program.getListing();
 		FunctionManager fm = program.getFunctionManager();
-		SymbolTable st = program.getSymbolTable();
 		
 		for (MemoryBlock block : program.getMemory().getBlocks()) {
 			if (!block.getName().equals(".init_array")) { continue; }
