@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ghidra:  ["9.1.2", "10.0.2", "10.0.4"]
+        ghidra:  ["10.0.2", "10.0.4"]
     steps:
       - uses: actions/checkout@v1
       - uses: actions/setup-java@v1
@@ -33,7 +33,7 @@ jobs:
       - uses: svenstaro/upload-release-action@v1-release
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/*ghidra-emotionengine.zip
+          file: dist/*.zip
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
