@@ -4,7 +4,7 @@ A suite of analyzers to assist in reverse engineering Metroid Dread.
 
 ## Dependencies
 
-Requires [https://github.com/Adubbz/Ghidra-Switch-Loader/](Ghidra-Switch-Loader) to be installed. 
+Requires [Ghidra-Switch-Loader](https://github.com/Adubbz/Ghidra-Switch-Loader/) to be installed. 
 
 ## Installation
 
