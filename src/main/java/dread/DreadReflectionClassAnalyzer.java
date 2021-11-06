@@ -5,10 +5,6 @@ import java.util.Set;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.data.BuiltInDataTypeManager;
-import ghidra.program.model.data.CategoryPath;
-import ghidra.program.model.data.DataTypeManager;
-import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.listing.CircularDependencyException;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
@@ -34,15 +30,6 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			throws CancelledException {
 		
 		FunctionManager fm = program.getFunctionManager();
-		
-		DataTypeManager dtm = program.getDataTypeManager();
-		if (dtm.getDataType(CategoryPath.ROOT, "__guard") == null) {
-			StructureDataType guard = new StructureDataType("__guard", 8, dtm);
-			DataTypeManager builtIn = BuiltInDataTypeManager.getDataTypeManager();
-			guard.replace(0, builtIn.getDataType(CategoryPath.ROOT, "byte"), 1, "initialized", "");
-			guard.replace(1,  builtIn.getDataType(CategoryPath.ROOT, "byte"), 1, "in_use", "");
-			dtm.addDataType(guard, null);
-		}
 		
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }

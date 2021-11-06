@@ -3,6 +3,7 @@ package dread;
 import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.program.flatapi.FlatProgramAPI;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.DataTypeConflictException;
@@ -36,40 +37,38 @@ public class DreadInitArrayAnalyzer extends DreadAnalyzer {
 		Listing listing = program.getListing();
 		FunctionManager fm = program.getFunctionManager();
 		
-		for (MemoryBlock block : program.getMemory().getBlocks()) {
-			if (!block.getName().equals(".init_array")) { continue; }
-			monitor.setMaximum(block.getSize()/8);
-			for (int i = 0; i < block.getSize(); i += 8) {
-				if (monitor.isCancelled()) { return false; }
-				monitor.incrementProgress(1);
-				Address a = block.getStart().add(i);
-				Reference[] r = rm.getReferencesFrom(a);
-				if (r.length == 0) {
-					try {
-						listing.createData(a, new PointerDataType());
-					} catch (CodeUnitInsertionException | DataTypeConflictException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-					r = rm.getReferencesFrom(a);
+		MemoryBlock initArray = new FlatProgramAPI(program).getMemoryBlock(".init_array");
+		if (initArray == null) { return false; }
+		monitor.setMaximum(initArray.getSize()/8);
+		for (int i = 0; i < initArray.getSize(); i += 8) {
+			if (monitor.isCancelled()) { return false; }
+			monitor.incrementProgress(1);
+			Address a = initArray.getStart().add(i);
+			Reference[] r = rm.getReferencesFrom(a);
+			if (r.length == 0) {
+				try {
+					listing.createData(a, new PointerDataType());
+				} catch (CodeUnitInsertionException | DataTypeConflictException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
 				}
-				Address entry = r[0].getToAddress();
-				if (listing.getInstructionAt(entry) == null) {
-					new DisassembleCommand(entry, null, true).applyTo(program);
-					findOrCreateFuncAt(program, entry);
-				} else {
-					if (forceReanalysis) {
-						Function f = functionAt(program, entry);
-						if (f != null) {
-							f.getSymbol().delete();
-							fm.removeFunction(entry);
-						}
-					}
-					findOrCreateFuncAt(program, entry);
-				}
+				r = rm.getReferencesFrom(a);
 			}
-			return true;
+			Address entry = r[0].getToAddress();
+			if (listing.getInstructionAt(entry) == null) {
+				new DisassembleCommand(entry, null, true).applyTo(program);
+				findOrCreateFuncAt(program, entry);
+			} else {
+				if (forceReanalysis) {
+					Function f = functionAt(program, entry);
+					if (f != null) {
+						f.getSymbol().delete();
+						fm.removeFunction(entry);
+					}
+				}
+				findOrCreateFuncAt(program, entry);
+			}
 		}
-		return false;
+		return true;
 	}
 }

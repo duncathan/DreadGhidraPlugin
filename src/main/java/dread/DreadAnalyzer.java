@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.services.AbstractAnalyzer;
 import ghidra.app.services.AnalysisPriority;
@@ -128,6 +129,9 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	protected Function findOrCreateFuncAt(Program program, Address addr, String name, Namespace ns) {
 		Function f = functionAt(program, addr);
 		if (f == null) {
+			if (program.getListing().getInstructionAt(addr) == null) {
+				new DisassembleCommand(addr, null, true).applyTo(program);
+			}
 			new CreateFunctionCmd(null, addr, null, sourceType(), false, false).applyTo(program);
 		}
 		return functionAt(program, addr);

@@ -24,11 +24,14 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.data.BuiltInDataTypeManager;
 import ghidra.program.model.data.CategoryPath;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeConflictException;
+import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.Pointer64DataType;
 import ghidra.program.model.data.Structure;
+import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.data.VoidDataType;
 import ghidra.program.model.lang.CompilerSpec;
 import ghidra.program.model.listing.CircularDependencyException;
@@ -57,7 +60,7 @@ import ghidra.util.task.TaskMonitor;
 
 public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	public DreadReflectionNamespaceAnalyzer() {
-		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.INSTRUCTION_ANALYZER);
+		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.BYTE_ANALYZER);
 		setPriority(priority(1));
 	}
 
@@ -65,9 +68,20 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
 			throws CancelledException {
 
+		ReferenceManager rm = program.getReferenceManager();
 		AddressFactory af = program.getAddressFactory();
 		Listing listing = program.getListing();
 		SymbolTable st = program.getSymbolTable();
+		FlatProgramAPI flatAPI = new FlatProgramAPI(program);
+		
+		DataTypeManager dtm = program.getDataTypeManager();
+		if (dtm.getDataType(CategoryPath.ROOT, "__guard") == null) {
+			StructureDataType guard = new StructureDataType("__guard", 8, dtm);
+			DataTypeManager builtIn = BuiltInDataTypeManager.getDataTypeManager();
+			guard.replace(0, builtIn.getDataType(CategoryPath.ROOT, "byte"), 1, "initialized", "");
+			guard.replace(1,  builtIn.getDataType(CategoryPath.ROOT, "byte"), 1, "in_use", "");
+			dtm.addDataType(guard, null);
+		}
 		
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
@@ -77,13 +91,12 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		Pattern divideNamespaces = Pattern.compile("\\w+(?:<.*>)?(?:\\s*(?:const|\\*))*");
 		
 		Map<String, Address> baseReflectionTypes = Map.of(
-				"CClass", 			af.getAddress("0x71015df6f7"),	// 2908
+				"CClass", 			af.getAddress("0x71015df6f7"),	// 2922
 				"CPointerType", 	af.getAddress("0x7101577e71"),	// 1152
-				"CEnumType", 		af.getAddress("0x71015e9811"),	// 230
+				"CEnumType", 		af.getAddress("0x71015e9811"),	// 238
 				"CCollectionType", 	af.getAddress("0x710156db4e"),	// 205
 				"CFlagsetType", 	af.getAddress("0x71015d03dd")	// 9
 		);
-		ReferenceManager rm = program.getReferenceManager();
 		
 		HashMap<String, Integer> baseTypeReferences = new HashMap<String, Integer>();
 		HashMap<String, Integer> baseTypeConstructorCount = new HashMap<String, Integer>();
@@ -181,7 +194,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 					
 					Reference singleton = null;
 					for (Reference param : params) {
-						if (listing.isUndefined(param.getToAddress(), param.getToAddress())) {
+						if (flatAPI.getMemoryBlock(param.getToAddress()).getName().equals(".bss")) {
 							singleton = param;
 							break;
 						}
@@ -194,7 +207,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 						Data clsData = listing.getDataAt(singleton.getToAddress());
 						if (clsData != null && clsData.getDataType() != clsStruct) {
 							try {
-								new FlatProgramAPI(program).removeData(clsData);
+								flatAPI.removeData(clsData);
 							} catch (Exception e) {
 								e.printStackTrace();
 							}
@@ -232,7 +245,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 									Data sfData = listing.getDataAt(singletonGuards.getToAddress());
 									if (sfData != null && sfData.getDataType() != guard) {
 										try {
-											new FlatProgramAPI(program).removeData(sfData);
+											flatAPI.removeData(sfData);
 										} catch (Exception e) {
 											e.printStackTrace();
 										}
@@ -253,18 +266,29 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 									}
 								}
 								
-								if (params.size() < 1) { break; }
-								Address fieldsAddr = params.get(params.size()-1).getToAddress();
-								Function fields = findOrCreateFuncAt(program, fieldsAddr, "fields", cls);
+								Function fields = null;
+								for (Reference param : params) {
+									Address addr = param.getToAddress();
+									Function possibleFields = findOrCreateFuncAt(program, addr, cls);
+									if (possibleFields == null) { continue; }
+									try {
+										possibleFields.setParentNamespace(cls);
+										possibleFields.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
+									} catch (InvalidInputException | CircularDependencyException | DuplicateNameException e) {
+										e.printStackTrace();
+									}
+										if (!possibleFields.getCalledFunctions(null).contains(knownFuncs.get("RegisterField"))) { continue; }
+									fields = possibleFields;
+									break;
+								}
 								if (fields == null) {
-									System.out.println("Missing fields func: "+cls.getName());
+									// this class's fields func is empty
+//									System.out.println("Missing fields func: "+cls.getName());
 									break;
 								}
 								try {
-									fields.setParentNamespace(cls);
 									fields.setName("fields", sourceType());
-									fields.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
-								} catch (DuplicateNameException | InvalidInputException | CircularDependencyException e) {
+								} catch (DuplicateNameException | InvalidInputException e) {
 									// TODO Auto-generated catch block
 									e.printStackTrace();
 								}
