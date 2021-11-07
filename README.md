@@ -14,13 +14,9 @@ Requires [Ghidra-Switch-Loader](https://github.com/Adubbz/Ghidra-Switch-Loader/)
 
 ## Usage
 
-### Initial run
- 1) For your initial run, load a project with `exefs/main`. Do not analyze immediately, if prompted.
+ 1) Load a project with `exefs/main`. Do not analyze immediately, if prompted.
  2) Open the Auto Analysis menu (`Analysis -> Auto Analysis`) and select the default options. Make the following changes:
     - Enable `Aggressive Instruction Finder`
     - Enable `Decompiler Parameter ID`
     - Disable `Non-Returning Functions - Discovered`
  3) Analyze!
-
-### Subsequent analysis
-Select the desired analyzer from the `Analysis -> One-Shot` dropdown and analyze.
