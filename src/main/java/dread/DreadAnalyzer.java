@@ -176,7 +176,7 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 	
 	private HashMap<String, Function> knownFuncs = null;
 	protected HashMap<String, Function> knownFunctions(Program program) {
-		if (knownFuncs == null) {
+		if (forceReanalysis || knownFuncs == null) {
 			knownFuncs = new HashMap<String, Function>();
 			if (version.equals("1.0.0")) {
 				knownFuncs.put("__cxa_guard_acquire", functionAt(program, "0x71011f3000"));
@@ -190,6 +190,9 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 			knownFuncs.put("FUN_7100000250", functionAt(program, "0x7100000250"));
 			knownFuncs.put("CRC64", functionAt(program, "0x7100001570"));
 			knownFuncs.put("RegisterField", functionAt(program, "0x7100096234"));
+			knownFuncs.put("RegisterFunction", functionAt(program, "0x7100097260"));
+			knownFuncs.put("RegisterEditorOnlyField", functionAt(program, "0x71000931c8"));
+			knownFuncs.put("RegisterFieldAndEditorOnlyField", functionAt(program, "0x7100097088"));
 		}
 		return knownFuncs;
 	}
@@ -199,7 +202,7 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 		public ArrayList<Reference> params();
 	}
 	
-	protected ArrayList<FuncWithParams> callsWithParams(Program program, Function func) {
+	protected ArrayList<Reference> referencesFromFunc(Program program, Function func) {
 		ReferenceManager rm = program.getReferenceManager();
 		
 		ArrayList<Reference> allReferences = new ArrayList<Reference>();
@@ -207,9 +210,13 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 			allReferences.addAll(Arrays.asList(rm.getReferencesFrom(a)));
 		}
 		
+		return allReferences;
+	}
+	
+	protected ArrayList<FuncWithParams> callsWithParams(Program program, Function func) {
 		ArrayList<FuncWithParams> funcsWithParams = new ArrayList<FuncWithParams>();
 		ArrayList<Reference> params = new ArrayList<Reference>();
-		for (Reference r : allReferences) {
+		for (Reference r : referencesFromFunc(program, func)) {
 			if (r.getReferenceType() == RefType.PARAM) {
 				params.add(r);
 			}

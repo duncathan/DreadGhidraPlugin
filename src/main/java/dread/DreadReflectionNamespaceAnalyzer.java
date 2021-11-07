@@ -1,6 +1,7 @@
 package dread;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -62,17 +63,17 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	public DreadReflectionNamespaceAnalyzer() {
 		super("(Dread) Generate Reflection Classes", "Analyzes functions in order to generate classes", AnalyzerType.INSTRUCTION_ANALYZER);
 		setPriority(priority(1));
+		
+		divideNamespaces = Pattern.compile("\\w+(?:<.*>)?(?:\\s*(?:const|\\*))*");
 	}
+	
+	HashMap<String, Function> knownFuncs;
+	Set<Function> fieldsFuncs;
+	Pattern divideNamespaces;
 
 	@Override
 	public boolean added(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log)
 			throws CancelledException {
-
-		ReferenceManager rm = program.getReferenceManager();
-		AddressFactory af = program.getAddressFactory();
-		Listing listing = program.getListing();
-		SymbolTable st = program.getSymbolTable();
-		FlatProgramAPI flatAPI = new FlatProgramAPI(program);
 		
 		DataTypeManager dtm = program.getDataTypeManager();
 		if (dtm.getDataType(CategoryPath.ROOT, "__guard") == null) {
@@ -86,9 +87,27 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		Namespace reflection = reflection(program);
 		if (reflection == null) { return false; }
 		
-		HashMap<String, Function> knownFuncs = knownFunctions(program);
+		knownFuncs = knownFunctions(program);
+		fieldsFuncs = Set.of(
+			knownFuncs.get("RegisterField"),
+			knownFuncs.get("RegisterFunction"),
+			knownFuncs.get("RegisterEditorOnlyField"),
+			knownFuncs.get("RegisterFieldAndEditorOnlyField")
+		);
 		
-		Pattern divideNamespaces = Pattern.compile("\\w+(?:<.*>)?(?:\\s*(?:const|\\*))*");
+		if (!analyzeSpecialCases(program, set, monitor, log)) { return false; }
+		
+		if (!analyzeStandardCases(program, set, monitor, log)) { return false; }
+		
+		return true;
+	}
+	
+	boolean analyzeStandardCases(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) {
+		ReferenceManager rm = program.getReferenceManager();
+		AddressFactory af = program.getAddressFactory();
+		Listing listing = program.getListing();
+		SymbolTable st = program.getSymbolTable();
+		FlatProgramAPI flatAPI = new FlatProgramAPI(program);
 		
 		Map<String, Address> baseReflectionTypes = Map.of(
 				"CClass", 			af.getAddress("0x71015df6f7"),	// 2922
@@ -130,36 +149,10 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 				if (called.contains(knownFuncs.get("__cxa_guard_acquire"))) {
 					//inline constructor
 					inline = true;
-					
-					f.addTag("REFLECTION");
-					
-					ArrayList<FuncWithParams> hashStrCalls = callsWithParams(program, f);
-					hashStrCalls.removeIf(fn -> fn.function() != knownFuncs.get("HashString"));
-					if (hashStrCalls.size() > 0) {
-						hashStr = hashStrCalls.get(0);
-					}
+					hashStr = hashStrInline(program, f);
 				} else {
 					// standard constructor
-					Function init = getCaller(program, f);
-					init.addTag("REFLECTION");
-					
-					ArrayList<FuncWithParams> allCalls = callsWithParams(program, init);
-					
-					FuncWithParams thiscall = null;
-					for (FuncWithParams call : allCalls) {
-						if (call.function() == f) { 
-							thiscall = call;
-							break;
-						}
-					}
-						
-					hashStr = allCalls.get(allCalls.indexOf(thiscall)-1);
-					ArrayList<Function> hashStrOrCrc = new ArrayList<Function>();
-					hashStrOrCrc.add(knownFuncs.get("HashString"));
-					hashStrOrCrc.add(knownFuncs.get("CRC64"));
-					for (int i = allCalls.indexOf(hashStr)-1; i >= 0 && !hashStrOrCrc.contains(hashStr.function()); i--) {
-						hashStr = allCalls.get(i);
-					}
+					hashStr = hashStrStandard(program, f);
 				}
 						
 				Address classNameAddr = hashStr.params().get(0).getToAddress();
@@ -168,11 +161,12 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 				
 				String[] constrTags = {"CONSTRUCTOR", "ReflectionType", baseTypeName};
 				createFunc(program, f, divideNamespaces, fullName, null, constrTags);
+				
 				try {
 					f.setCallingConvention(CompilerSpec.CALLING_CONVENTION_thiscall);
-				} catch (InvalidInputException e) {
+				} catch (InvalidInputException e3) {
 					// TODO Auto-generated catch block
-					e.printStackTrace();
+					e3.printStackTrace();
 				}
 				
 				baseTypeConstructorCount.put(baseTypeName, baseTypeConstructorCount.get(baseTypeName)+1);
@@ -277,13 +271,12 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 									} catch (InvalidInputException | CircularDependencyException | DuplicateNameException e) {
 										e.printStackTrace();
 									}
-										if (!possibleFields.getCalledFunctions(null).contains(knownFuncs.get("RegisterField"))) { continue; }
+									if (Collections.disjoint(possibleFields.getCalledFunctions(null), fieldsFuncs)) { continue; }
 									fields = possibleFields;
 									break;
 								}
 								if (fields == null) {
 									// this class's fields func is empty
-//									System.out.println("Missing fields func: "+cls.getName());
 									break;
 								}
 								try {
@@ -340,6 +333,39 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 		return true;
 	}
 	
+	FuncWithParams hashStrInline(Program program, Function f) {
+		f.addTag("REFLECTION");
+		
+		ArrayList<FuncWithParams> hashStrCalls = callsWithParams(program, f);
+		hashStrCalls.removeIf(fn -> fn.function() != knownFuncs.get("HashString"));
+		if (hashStrCalls.size() == 0) { return null; }
+		return hashStrCalls.get(0);
+	}
+	
+	FuncWithParams hashStrStandard(Program program, Function f) {
+		Function init = getCaller(program, f);
+		init.addTag("REFLECTION");
+		
+		ArrayList<FuncWithParams> allCalls = callsWithParams(program, init);
+		
+		FuncWithParams thiscall = null;
+		for (FuncWithParams call : allCalls) {
+			if (call.function() == f) { 
+				thiscall = call;
+				break;
+			}
+		}
+			
+		FuncWithParams hashStr = allCalls.get(allCalls.indexOf(thiscall)-1);
+		ArrayList<Function> hashStrOrCrc = new ArrayList<Function>();
+		hashStrOrCrc.add(knownFuncs.get("HashString"));
+		hashStrOrCrc.add(knownFuncs.get("CRC64"));
+		for (int i = allCalls.indexOf(hashStr)-1; i >= 0 && !hashStrOrCrc.contains(hashStr.function()); i--) {
+			hashStr = allCalls.get(i);
+		}
+		return hashStr;
+	}
+	
 	public Function getCaller(Program program, Function f) {
 		Set<Function> calling = new HashSet<Function>(); 
 		for (Reference r2 : program.getReferenceManager().getReferencesTo(f.getEntryPoint())) {
@@ -353,7 +379,7 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 	public boolean createFunc(Program program, Function f, Pattern p, String fullName, String funcName, String[] tags) {
 		// create classes
 		try {
-			if (forceReanalysis || f.getParentNamespace() == program.getGlobalNamespace()) {
+			if (forceReanalysis || f.getParentNamespace() == program.getGlobalNamespace() || f.getParentNamespace().getParentNamespace() == program.getGlobalNamespace()) {
 				Namespace reflection = reflection(program);
 				Namespace ns = reflection;
 				Matcher matcher = p.matcher(fullName);
@@ -452,6 +478,51 @@ public class DreadReflectionNamespaceAnalyzer extends DreadAnalyzer {
 			return false;
 		}
 			
+		
+		return true;
+	}
+	
+	boolean analyzeSpecialCases(Program program, AddressSetView set, TaskMonitor monitor, MessageLog log) {
+		String[] specialCases = {
+				"0x7100024464",
+				"0x710000d228",
+				"0x710000abbc",
+				"0x71000146d8",
+				"0x7100009658",
+				"0x7100024644",
+				"0x7100007f84",
+				"0x710000fcfc",
+				"0x710000ad9c",
+				"0x7100005178",
+				"0x710025d1b4",
+				"0x7100024824",
+				"0x71000a84b4",
+				"0x710009f3ac",
+				"0x710009f848",
+				"0x710009fce4",
+				"0x7100008500",
+				"0x710009b55c",
+				"0x71000a3c78",
+				"0x71000a0028",
+				"0x710009ef10",
+		};
+		
+		for (String s : specialCases) {
+			Function f = functionAt(program, s);
+			
+			Address classNameAddr = hashStrInline(program, f).params().get(0).getToAddress();
+
+			String fullName = findName(program, classNameAddr);
+			
+			String[] constrTags = {"CONSTRUCTOR", "PrimitiveType"};
+			createFunc(program, f, divideNamespaces, fullName, null, constrTags);
+			try {
+				f.setName("init", sourceType());
+			} catch (DuplicateNameException | InvalidInputException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
 		
 		return true;
 	}
