@@ -193,6 +193,7 @@ public abstract class DreadAnalyzer extends AbstractAnalyzer {
 			knownFuncs.put("RegisterFunction", functionAt(program, "0x7100097260"));
 			knownFuncs.put("RegisterEditorOnlyField", functionAt(program, "0x71000931c8"));
 			knownFuncs.put("RegisterFieldAndEditorOnlyField", functionAt(program, "0x7100097088"));
+			knownFuncs.put("AddEnumValue", functionAt(program, "0x71000148b8"));
 		}
 		return knownFuncs;
 	}

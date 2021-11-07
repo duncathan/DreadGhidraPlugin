@@ -6,6 +6,7 @@ import java.util.Set;
 import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.util.importer.MessageLog;
+import ghidra.framework.options.Options;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.CircularDependencyException;
@@ -24,8 +25,21 @@ import ghidra.util.task.TaskMonitor;
 
 public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 	public DreadReflectionClassAnalyzer() {
-		super("(Dread) Generate Type Hierarchy", "Analyzes the generated reflection classes to establish a hierearchy", AnalyzerType.FUNCTION_SIGNATURES_ANALYZER);
+		super("(Dread) Analyze Reflection Classes", "Analyzes the generated reflection classes to establish a hierearchy and identify init functions", AnalyzerType.FUNCTION_SIGNATURES_ANALYZER);
 		setPriority(priority(2));
+	}
+	
+	protected boolean overrideNamespaces = true;
+	@Override
+	public void registerOptions(Options options, Program program) {
+		super.registerOptions(options, program);
+		options.registerOption("Override namespaces", overrideNamespaces, null,
+				"Make any inherited class a child of its parent's namespace. Disable if the original namespaces are required");
+	}
+	@Override
+	public void optionsChanged(Options options, Program program) {
+		super.optionsChanged(options, program);
+		overrideNamespaces = options.getBoolean("Override namespaces", overrideNamespaces);
 	}
 	
 	@Override
@@ -92,10 +106,6 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 			} else {
 				ArrayList<FuncWithParams> calls = callsWithParams(program, f);
 				calls.removeIf(fn -> !hasTag(program, fn.function(), "CONSTRUCTOR") || hasTag(program, fn.function(), "PrimitiveType"));
-				if (calls.size() == 0) {
-					System.out.println("uh oh "+f);
-					continue;
-				}
 				try {
 					f.setParentNamespace(calls.get(calls.size()-1).function().getParentNamespace());
 					f.setName("init", sourceType());
@@ -105,6 +115,7 @@ public class DreadReflectionClassAnalyzer extends DreadAnalyzer {
 				}				
 			}
 			
+			if (!overrideNamespaces) { continue; }
 			Namespace cls = f.getParentNamespace();
 			if (cls == program.getGlobalNamespace() || cls == null) { continue; }
 			Set<Function> called = f.getCalledFunctions(null);
